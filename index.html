@@ -119,6 +119,7 @@
       letter-spacing: -0.04em; line-height: 1;
     }
     .stat .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; opacity: 0.6; }
     .stat.green .val { color: var(--green); }
     .stat.amber .val { color: var(--amber); }
     .stat.red   .val { color: var(--red); }
@@ -305,15 +306,18 @@ function render(db) {
     <div class="stat-grid">
       <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
         <div class="val">${nowPct}%</div>
-        <div class="lbl">Right now</div>
+        <div class="lbl">On time now</div>
+        <div class="sub">${last.onTime} of ${last.total}</div>
       </div>
       <div class="stat amber">
-        <div class="val">${last.delayed}</div>
-        <div class="lbl">Delayed</div>
+        <div class="val">${pct(last.delayed, last.total)}%</div>
+        <div class="lbl">Delayed now</div>
+        <div class="sub">${last.delayed} of ${last.total}</div>
       </div>
       <div class="stat red">
-        <div class="val">${last.cancelled}</div>
+        <div class="val">${last.cancelled > 0 ? pct(last.cancelled, last.total)+'%' : '0%'}</div>
         <div class="lbl">Cancelled</div>
+        <div class="sub">${last.cancelled} of ${last.total}</div>
       </div>
     </div>
 
