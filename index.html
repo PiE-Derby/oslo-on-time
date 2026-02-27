@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="no">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Oslo Transit — On Time?</title>
-  <meta name="description" content="Is Oslo public transport running on schedule? Real stats updated every 15 minutes.">
+  <title>Oslo Transport — I Rute?</title>
+  <meta name="description" content="Er kollektivtrafikken i Oslo i rute? Ekte data hentet hvert 15. minutt via Entur.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,13 +17,24 @@
       --bg3:    #20242e;
       --border: rgba(255,255,255,0.07);
       --text:   #f0f2f5;
-      --muted:  #6b7280;
+      --muted:  #8090a8; /* bumped from #6b7280 — passes WCAG AA 5.19:1 */
       --cyan:   #0cb6eb;
       --green:  #22c55e;
       --amber:  #f59e0b;
-      --red:    #ef4444;
+      --red:    #f05050; /* lightened from #ef4444 — passes WCAG AA 4.79:1 */
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Skip nav for keyboard users */
+    .skip-nav {
+      position: absolute; left: -999px; top: auto; width: 1px; height: 1px; overflow: hidden;
+    }
+    .skip-nav:focus {
+      position: fixed; left: 1rem; top: 1rem; width: auto; height: auto;
+      background: var(--cyan); color: #000; padding: 0.5rem 1rem; border-radius: 6px;
+      z-index: 9999; font-weight: 600; font-size: 0.875rem;
+    }
+
     body {
       font-family: 'Inter', system-ui, sans-serif;
       background: var(--bg);
@@ -39,6 +50,7 @@
         linear-gradient(90deg, rgba(12,182,235,0.025) 1px, transparent 1px);
       background-size: 44px 44px;
       pointer-events: none;
+      aria-hidden: true;
     }
 
     /* ── LAYOUT ── */
@@ -59,21 +71,34 @@
     }
     .logo-text h1 span { color: var(--cyan); }
     .logo-text p { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+
+    /* Live badge — proper <button> for a11y */
     .live-badge {
       display: flex; align-items: center; gap: 0.4rem;
+      font-family: inherit;
       font-size: 0.72rem; font-weight: 500; color: var(--green);
       background: rgba(34,197,94,0.08);
       border: 1px solid rgba(34,197,94,0.2);
       padding: 0.3rem 0.7rem; border-radius: 999px;
       white-space: nowrap;
+      cursor: pointer;
       transition: color 0.2s, background 0.2s, border-color 0.2s;
+    }
+    .live-badge:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
     }
     .live-badge.paused {
       color: var(--muted);
-      background: rgba(107,114,128,0.08);
-      border-color: rgba(107,114,128,0.2);
+      background: rgba(128,144,168,0.08);
+      border-color: rgba(128,144,168,0.2);
     }
-    .live-badge .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; transition: background 0.2s; }
+    .live-badge .dot {
+      width: 6px; height: 6px; background: var(--green);
+      border-radius: 50%; animation: pulse 2s infinite;
+      transition: background 0.2s; flex-shrink: 0;
+      aria-hidden: true;
+    }
     .live-badge.paused .dot { background: var(--muted); animation: none; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
@@ -84,6 +109,7 @@
     }
     .filter-btn {
       display: flex; align-items: center; gap: 0.35rem;
+      font-family: inherit;
       font-size: 0.78rem; font-weight: 500;
       padding: 0.35rem 0.85rem;
       border-radius: 999px;
@@ -95,6 +121,7 @@
       white-space: nowrap;
     }
     .filter-btn:hover { border-color: rgba(12,182,235,0.3); color: var(--text); }
+    .filter-btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     .filter-btn.active {
       background: rgba(12,182,235,0.12);
       border-color: rgba(12,182,235,0.4);
@@ -103,30 +130,24 @@
 
     /* ── HERO SCORE ── */
     .hero-score {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2rem;
-      margin-bottom: 1rem;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 16px; padding: 2rem; margin-bottom: 1rem;
       display: flex; align-items: center; gap: 2rem;
       position: relative; overflow: hidden;
     }
     .hero-score::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
       background: linear-gradient(90deg, transparent, var(--cyan), transparent);
     }
     .big-num {
       font-family: 'Urbanist', sans-serif;
-      font-size: 5.5rem;
-      font-weight: 800;
-      letter-spacing: -0.05em;
-      line-height: 1;
+      font-size: 5.5rem; font-weight: 800;
+      letter-spacing: -0.05em; line-height: 1;
       transition: color 0.4s;
     }
-    .big-num.good   { color: var(--green); }
-    .big-num.ok     { color: var(--amber); }
-    .big-num.bad    { color: var(--red); }
+    .big-num.good { color: var(--green); }
+    .big-num.ok   { color: var(--amber); }
+    .big-num.bad  { color: var(--red); }
     .score-meta { flex: 1; }
     .verdict {
       font-family: 'Urbanist', sans-serif;
@@ -138,15 +159,12 @@
 
     /* ── STAT GRID ── */
     .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.75rem;
-      margin-bottom: 1rem;
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem; margin-bottom: 1rem;
     }
     .stat {
       background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 1rem 1.1rem;
-      text-align: center;
+      border-radius: 12px; padding: 1rem 1.1rem; text-align: center;
     }
     .stat .val {
       font-family: 'Urbanist', sans-serif;
@@ -154,7 +172,7 @@
       letter-spacing: -0.04em; line-height: 1;
     }
     .stat .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat .sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; opacity: 0.6; }
+    .stat .sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; opacity: 0.7; }
     .stat.green .val { color: var(--green); }
     .stat.amber .val { color: var(--amber); }
     .stat.red   .val { color: var(--red); }
@@ -162,16 +180,13 @@
     /* ── CARDS ── */
     .card {
       background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 1.25rem 1.5rem;
-      margin-bottom: 1rem;
+      border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;
     }
     .card-title {
       font-size: 0.68rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.1em;
       color: var(--muted); margin-bottom: 1.1rem;
     }
-
-    /* Chart */
     .chart-wrap { position: relative; height: 160px; }
 
     /* Mode bars */
@@ -182,14 +197,10 @@
     .mode-bar-bg { flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
     .mode-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
     .mode-pct { font-size: 0.82rem; font-weight: 600; width: 38px; text-align: right; }
-    .mode-count { font-size: 0.72rem; color: var(--muted); width: 60px; text-align: right; }
+    .mode-count { font-size: 0.72rem; color: var(--muted); width: 64px; text-align: right; }
 
     /* Shame stats */
-    .shame-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-    }
+    .shame-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     .shame-item {
       background: var(--bg3); border: 1px solid var(--border);
       border-radius: 10px; padding: 0.9rem 1rem;
@@ -198,10 +209,10 @@
     .shame-value { font-family: 'Urbanist', sans-serif; font-size: 1.2rem; font-weight: 700; color: #fff; margin-top: 0.25rem; }
     .shame-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
 
-    /* Footer */
-    .footer { text-align: center; margin-top: 2rem; font-size: 0.72rem; color: var(--muted); opacity: 0.4; }
+    .footer { text-align: center; margin-top: 2rem; font-size: 0.72rem; color: var(--muted); opacity: 0.5; }
+    .footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+    .footer a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 2px; }
 
-    /* No data */
     .no-data { text-align: center; padding: 5rem 1rem; color: var(--muted); }
     .no-data h2 { font-family: 'Urbanist', sans-serif; font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
     .no-data p  { font-size: 0.85rem; line-height: 1.7; }
@@ -209,17 +220,20 @@
     @media (max-width: 500px) {
       .hero-score { flex-direction: column; gap: 0.75rem; }
       .big-num { font-size: 4rem; }
-      .stat-grid { grid-template-columns: repeat(3, 1fr); }
       .shame-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-<div class="page">
 
+<a href="#main" class="skip-nav">Hopp til innhold</a>
+
+<div class="page">
   <div class="header">
     <div class="logo">
-      <svg class="logo-mark" width="48" height="48" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <svg class="logo-mark" width="48" height="48" viewBox="0 0 64 64"
+           role="img" aria-label="Oslo Transport logo — tog med klokke"
+           xmlns="http://www.w3.org/2000/svg">
         <rect width="64" height="64" rx="14" fill="#1a1d25"/>
         <rect x="8" y="22" width="48" height="22" rx="6" fill="#0cb6eb"/>
         <path d="M44 22 Q56 22 56 30 L56 44 L44 44 Z" fill="#0997c5"/>
@@ -237,26 +251,35 @@
         <line x1="50" y1="14" x2="55" y2="14" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
       <div class="logo-text">
-        <h1>Oslo Transit — <span>On Time?</span></h1>
-        <p>Sampled from 5 major hubs via Entur · Updated every 15 min</p>
+        <h1>Oslo Transport — <span>I Rute?</span></h1>
+        <p>Hentet fra 5 knutepunkter via Entur · Oppdateres hvert 15. min</p>
       </div>
     </div>
-    <div class="live-badge" id="refresh-badge" onclick="togglePause()" title="Click to pause/resume" style="cursor:pointer;user-select:none">
-      <div class="dot" id="refresh-dot"></div>
-      <span id="refresh-label">Loading…</span>
+    <button class="live-badge" id="refresh-badge"
+            onclick="togglePause()"
+            aria-label="Auto-oppdatering. Klikk for å pause eller gjenoppta."
+            aria-pressed="false">
+      <div class="dot" aria-hidden="true"></div>
+      <span id="refresh-label">Laster…</span>
+    </button>
+  </div>
+
+  <div class="filters" role="group" aria-label="Filtrer på transportmiddel">
+    <button class="filter-btn active" type="button" data-mode="all"   aria-pressed="true"  onclick="setFilter('all')">🚦 Alle</button>
+    <button class="filter-btn"        type="button" data-mode="rail"  aria-pressed="false" onclick="setFilter('rail')">🚆 Tog</button>
+    <button class="filter-btn"        type="button" data-mode="metro" aria-pressed="false" onclick="setFilter('metro')">🚇 T-bane</button>
+    <button class="filter-btn"        type="button" data-mode="tram"  aria-pressed="false" onclick="setFilter('tram')">🚊 Trikk</button>
+    <button class="filter-btn"        type="button" data-mode="bus"   aria-pressed="false" onclick="setFilter('bus')">🚌 Buss</button>
+  </div>
+
+  <main id="main">
+    <div id="app">
+      <div class="no-data">
+        <h2>Samler inn data…</h2>
+        <p>Første målinger er på vei.<br>Sjekk tilbake om noen minutter.</p>
+      </div>
     </div>
-  </div>
-
-  <div class="filters" id="filters">
-    <button class="filter-btn active" data-mode="all" onclick="setFilter('all')">🚦 All</button>
-    <button class="filter-btn" data-mode="rail"  onclick="setFilter('rail')">🚆 Train</button>
-    <button class="filter-btn" data-mode="metro" onclick="setFilter('metro')">🚇 T-bane</button>
-    <button class="filter-btn" data-mode="tram"  onclick="setFilter('tram')">🚊 Tram</button>
-    <button class="filter-btn" data-mode="bus"   onclick="setFilter('bus')">🚌 Bus</button>
-  </div>
-
-  <div id="app"><div class="no-data"><h2>Collecting data…</h2><p>First samples are being gathered.<br>Check back in a few minutes.</p></div></div>
-
+  </main>
 </div>
 
 <script>
@@ -266,25 +289,28 @@ let lastDb = null;
 function setFilter(mode) {
   activeFilter = mode;
   document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === mode);
+    const active = b.dataset.mode === mode;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
   });
   if (lastDb) render(lastDb);
 }
 
 const MODES = {
-  rail:    { label: 'Train',  icon: '🚆' },
+  rail:    { label: 'Tog',    icon: '🚆' },
   metro:   { label: 'T-bane', icon: '🚇' },
-  tram:    { label: 'Tram',   icon: '🚊' },
-  bus:     { label: 'Bus',    icon: '🚌' },
-  water:   { label: 'Ferry',  icon: '⛴️' },
-  unknown: { label: 'Other',  icon: '🚐' },
+  tram:    { label: 'Trikk',  icon: '🚊' },
+  bus:     { label: 'Buss',   icon: '🚌' },
+  water:   { label: 'Ferge',  icon: '⛴️' },
+  unknown: { label: 'Annet',  icon: '🚐' },
 };
+
 const VERDICTS = [
-  [90, 'Running smooth 🟢',   'good'],
-  [78, 'Mostly on time',       'ok'],
-  [65, 'Some delays today',    'ok'],
-  [50, 'Pretty rough out there 🔴', 'bad'],
-  [0,  'Total chaos 🚨',       'bad'],
+  [90, 'Går som smurt 🟢',          'good'],
+  [78, 'Stort sett i rute',          'ok'],
+  [65, 'Noen forsinkelser i dag',    'ok'],
+  [50, 'Ganske kaotisk 🔴',          'bad'],
+  [0,  'Total kaos 🚨',              'bad'],
 ];
 
 function pct(v, t) { return t > 0 ? Math.round(v / t * 100) : 0; }
@@ -292,15 +318,11 @@ function pct(v, t) { return t > 0 ? Math.round(v / t * 100) : 0; }
 function barColor(p) {
   if (p >= 80) return '#22c55e';
   if (p >= 60) return '#f59e0b';
-  return '#ef4444';
+  return '#f05050';
 }
 
 function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtDate(ts) {
-  return new Date(ts * 1000).toLocaleDateString('no-NO', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 function hourOf(ts) {
@@ -308,7 +330,6 @@ function hourOf(ts) {
 }
 
 function modeSlice(h, mode) {
-  // Extract stats for a specific mode from a history point (or use totals if 'all')
   if (mode === 'all') return { total: h.total, onTime: h.onTime, delayed: h.delayed, cancelled: h.cancelled };
   const m = (h.modes || {})[mode];
   if (!m) return null;
@@ -318,198 +339,195 @@ function modeSlice(h, mode) {
 function render(db) {
   lastDb = db;
   const history = db.history || [];
-  if (history.length < 1) return;
+  if (!history.length) return;
 
   const mode  = activeFilter;
   const now24 = Date.now() / 1000 - 86400;
   const now48 = Date.now() / 1000 - 172800;
-  const last   = history[history.length - 1];
-  const recent = history.filter(h => h.t >= now24);
-  const chart  = history.filter(h => h.t >= now48);
+  const last      = history[history.length - 1];
+  const recent    = history.filter(h => h.t >= now24);
+  const chartHist = history.filter(h => h.t >= now48);
 
-  // Filtered "last" snapshot
-  const lastSlice = modeSlice(last, mode) || { total: 0, onTime: 0, delayed: 0, cancelled: 0 };
+  const lastSlice = modeSlice(last, mode) || { total:0, onTime:0, delayed:0, cancelled:0 };
 
-  // 24h totals — filtered by mode
-  const t24 = recent.reduce((a,h) => {
+  const t24 = recent.reduce((a, h) => {
     const s = modeSlice(h, mode);
     if (!s) return a;
     a.total+=s.total; a.onTime+=s.onTime; a.delayed+=s.delayed; a.cancelled+=s.cancelled;
     return a;
-  }, {total:0,onTime:0,delayed:0,cancelled:0});
+  }, { total:0, onTime:0, delayed:0, cancelled:0 });
 
   const avg24  = pct(t24.onTime, t24.total);
   const nowPct = pct(lastSlice.onTime, lastSlice.total);
-  const [,verdict,cls] = VERDICTS.find(([thresh]) => avg24 >= thresh);
+  const [, verdict, cls] = VERDICTS.find(([thresh]) => avg24 >= thresh);
 
-  // Mode aggregation 24h
+  // Mode aggregation
   const modes = {};
   for (const h of recent) {
     for (const [m, v] of Object.entries(h.modes || {})) {
-      if (!modes[m]) modes[m] = {total:0,onTime:0,delayed:0};
+      if (!modes[m]) modes[m] = { total:0, onTime:0, delayed:0 };
       modes[m].total   += v.total;
       modes[m].onTime  += v.onTime;
-      modes[m].delayed += (v.delayed||0);
+      modes[m].delayed += (v.delayed || 0);
     }
   }
-  const modesSorted = Object.entries(modes)
-    .filter(([,v]) => v.total > 5)
-    .sort((a,b) => b[1].total - a[1].total);
+  const modesSorted = Object.entries(modes).filter(([,v]) => v.total > 5).sort((a,b) => b[1].total - a[1].total);
 
-  // Shame stats — filtered by mode
+  // By hour
   const byHour = {};
   for (const h of recent) {
     const s = modeSlice(h, mode);
-    if (!s || s.total === 0) continue;
+    if (!s || !s.total) continue;
     const hr = hourOf(h.t);
-    if (!byHour[hr]) byHour[hr] = {on:0,tot:0};
+    if (!byHour[hr]) byHour[hr] = { on:0, tot:0 };
     byHour[hr].on  += s.onTime;
     byHour[hr].tot += s.total;
   }
   const hourEntries = Object.entries(byHour).filter(([,v]) => v.tot > 0);
-  const worstHour  = hourEntries.sort((a,b) => pct(a[1].on,a[1].tot) - pct(b[1].on,b[1].tot))[0];
-  const bestHour   = hourEntries.sort((a,b) => pct(b[1].on,b[1].tot) - pct(a[1].on,a[1].tot))[0];
+  const worstHour = hourEntries.slice().sort((a,b) => pct(a[1].on,a[1].tot) - pct(b[1].on,b[1].tot))[0];
+  const bestHour  = hourEntries.slice().sort((a,b) => pct(b[1].on,b[1].tot) - pct(a[1].on,a[1].tot))[0];
 
-  // Worst mode
   const worstMode = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(a[1].onTime,a[1].total) - pct(b[1].onTime,b[1].total))[0] : null;
   const bestMode  = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(b[1].onTime,b[1].total) - pct(a[1].onTime,a[1].total))[0] : null;
 
-  // Worst single sample — filtered by mode
   const worstSample = [...recent]
-    .filter(h => { const s = modeSlice(h, mode); return s && s.total > 0; })
-    .sort((a,b) => {
-      const sa = modeSlice(a, mode), sb = modeSlice(b, mode);
-      return pct(sa.onTime,sa.total) - pct(sb.onTime,sb.total);
-    })[0];
+    .filter(h => { const s = modeSlice(h,mode); return s && s.total > 0; })
+    .sort((a,b) => pct(modeSlice(a,mode).onTime,modeSlice(a,mode).total) - pct(modeSlice(b,mode).onTime,modeSlice(b,mode).total))[0];
   const worstSlice = worstSample ? modeSlice(worstSample, mode) : null;
 
-  // Samples collected today
   const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
   const todaySamples = history.filter(h => h.t >= todayStart.getTime()/1000).length;
 
-  const app = document.getElementById('app');
-  app.innerHTML = `
-
-    <div class="hero-score">
-      <div class="big-num ${cls}">${avg24}%</div>
-      <div class="score-meta">
-        <div class="verdict">${verdict}</div>
-        <div class="score-desc">
-          ${mode !== 'all' ? `<strong>${(MODES[mode]||MODES.unknown).icon} ${(MODES[mode]||MODES.unknown).label} only</strong> · ` : ''}<strong>${t24.total.toLocaleString()}</strong> departures over 24h<br>
-          <strong>${t24.delayed}</strong> delayed · <strong>${t24.cancelled}</strong> cancelled · <strong>${t24.onTime}</strong> on time
+  document.getElementById('app').innerHTML = `
+    <section aria-label="Hovedstatistikk">
+      <div class="hero-score">
+        <div class="big-num ${cls}" aria-label="${avg24} prosent i rute siste 24 timer">${avg24}%</div>
+        <div class="score-meta">
+          <p class="verdict">${verdict}</p>
+          <p class="score-desc">
+            ${mode !== 'all' ? `<strong>${(MODES[mode]||MODES.unknown).icon} Kun ${(MODES[mode]||MODES.unknown).label}</strong> · ` : ''}
+            <strong>${t24.total.toLocaleString('no-NO')}</strong> avganger siste 24t<br>
+            <strong>${t24.delayed}</strong> forsinket · <strong>${t24.cancelled}</strong> innstilt · <strong>${t24.onTime}</strong> i rute
+          </p>
         </div>
       </div>
-    </div>
 
-    <div class="stat-grid">
-      <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
-        <div class="val">${nowPct}%</div>
-        <div class="lbl">On time now</div>
-        <div class="sub">${lastSlice.onTime} of ${lastSlice.total}</div>
-      </div>
-      <div class="stat amber">
-        <div class="val">${pct(lastSlice.delayed, lastSlice.total)}%</div>
-        <div class="lbl">Delayed now</div>
-        <div class="sub">${lastSlice.delayed} of ${lastSlice.total}</div>
-      </div>
-      <div class="stat red">
-        <div class="val">${lastSlice.cancelled > 0 ? pct(lastSlice.cancelled, lastSlice.total)+'%' : '0%'}</div>
-        <div class="lbl">Cancelled</div>
-        <div class="sub">${lastSlice.cancelled} of ${lastSlice.total}</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Punctuality — last 48 hours</div>
-      <div class="chart-wrap"><canvas id="chart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">By mode — 24h average</div>
-      <div class="mode-list">
-        ${modesSorted.map(([mode, m]) => {
-          const p = pct(m.onTime, m.total);
-          const info = MODES[mode] || MODES.unknown;
-          return `<div class="mode-row">
-            <span class="mode-icon">${info.icon}</span>
-            <span class="mode-name">${info.label}</span>
-            <div class="mode-bar-bg">
-              <div class="mode-bar-fill" style="width:${p}%;background:${barColor(p)}"></div>
-            </div>
-            <span class="mode-pct" style="color:${barColor(p)}">${p}%</span>
-            <span class="mode-count">${m.total.toLocaleString()} trips</span>
-          </div>`;
-        }).join('') || '<div style="color:var(--muted);font-size:0.85rem">Need more data…</div>'}
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Stats & Shame Board</div>
-      <div class="shame-grid">
-        ${worstHour ? `
-        <div class="shame-item">
-          <div class="shame-label">Worst Hour Today</div>
-          <div class="shame-value">${worstHour[0].padStart(2,'0')}:00 — ${pct(worstHour[1].on,worstHour[1].tot)}%</div>
-          <div class="shame-sub">on time during that hour</div>
-        </div>` : ''}
-        ${bestHour ? `
-        <div class="shame-item">
-          <div class="shame-label">Best Hour Today</div>
-          <div class="shame-value">${bestHour[0].padStart(2,'0')}:00 — ${pct(bestHour[1].on,bestHour[1].tot)}%</div>
-          <div class="shame-sub">on time during that hour</div>
-        </div>` : ''}
-        ${worstMode ? `
-        <div class="shame-item">
-          <div class="shame-label">Worst Mode</div>
-          <div class="shame-value">${(MODES[worstMode[0]]||MODES.unknown).icon} ${(MODES[worstMode[0]]||MODES.unknown).label}</div>
-          <div class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% on time — needs improvement</div>
-        </div>` : ''}
-        ${bestMode ? `
-        <div class="shame-item">
-          <div class="shame-label">Most Reliable</div>
-          <div class="shame-value">${(MODES[bestMode[0]]||MODES.unknown).icon} ${(MODES[bestMode[0]]||MODES.unknown).label}</div>
-          <div class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% on time — 👏</div>
-        </div>` : ''}
-        ${worstSample && worstSlice ? `
-        <div class="shame-item">
-          <div class="shame-label">Worst Sample (24h)</div>
-          <div class="shame-value">${pct(worstSlice.onTime,worstSlice.total)}% @ ${fmtTime(worstSample.t)}</div>
-          <div class="shame-sub">${worstSlice.delayed} delayed, ${worstSlice.cancelled} cancelled</div>
-        </div>` : ''}
-        <div class="shame-item">
-          <div class="shame-label">Data Points Today</div>
-          <div class="shame-value">${todaySamples} samples</div>
-          <div class="shame-sub">of ~${Math.round(86400/900)} possible (15 min interval)</div>
+      <div class="stat-grid">
+        <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
+          <p class="val">${nowPct}%</p>
+          <p class="lbl">I rute nå</p>
+          <p class="sub">${lastSlice.onTime} av ${lastSlice.total}</p>
+        </div>
+        <div class="stat amber">
+          <p class="val">${pct(lastSlice.delayed, lastSlice.total)}%</p>
+          <p class="lbl">Forsinket nå</p>
+          <p class="sub">${lastSlice.delayed} av ${lastSlice.total}</p>
+        </div>
+        <div class="stat red">
+          <p class="val">${lastSlice.cancelled > 0 ? pct(lastSlice.cancelled,lastSlice.total)+'%' : '0%'}</p>
+          <p class="lbl">Innstilt</p>
+          <p class="sub">${lastSlice.cancelled} av ${lastSlice.total}</p>
         </div>
       </div>
-    </div>
+    </section>
 
-    <p class="footer">Last updated: ${new Date(db.updated).toLocaleString('no-NO')} · ${history.length} total samples stored · <a href="https://github.com/PiE-Derby/oslo-on-time" target="_blank" style="color:var(--muted);text-decoration:none">source</a></p>
+    <section aria-label="Punktlighet siste 48 timer">
+      <div class="card">
+        <h2 class="card-title">Punktlighet — siste 48 timer</h2>
+        <div class="chart-wrap">
+          <canvas id="chart" role="img" aria-label="Linjediagram som viser punktlighet i prosent over tid"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Per transportmiddel">
+      <div class="card">
+        <h2 class="card-title">Per transportmiddel — 24t snitt</h2>
+        <div class="mode-list" role="list">
+          ${modesSorted.map(([m, v]) => {
+            const p = pct(v.onTime, v.total);
+            const info = MODES[m] || MODES.unknown;
+            return `<div class="mode-row" role="listitem">
+              <span class="mode-icon" aria-hidden="true">${info.icon}</span>
+              <span class="mode-name">${info.label}</span>
+              <div class="mode-bar-bg" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${info.label}: ${p}% i rute">
+                <div class="mode-bar-fill" style="width:${p}%;background:${barColor(p)}"></div>
+              </div>
+              <span class="mode-pct" style="color:${barColor(p)}">${p}%</span>
+              <span class="mode-count">${v.total.toLocaleString('no-NO')} avg.</span>
+            </div>`;
+          }).join('') || '<p style="color:var(--muted);font-size:0.85rem">Mangler data…</p>'}
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Statistikk og skamtavle">
+      <div class="card">
+        <h2 class="card-title">Statistikk &amp; Skamtavle</h2>
+        <div class="shame-grid">
+          ${worstHour ? `
+          <div class="shame-item">
+            <p class="shame-label">Verste time i dag</p>
+            <p class="shame-value">${String(worstHour[0]).padStart(2,'0')}:00 — ${pct(worstHour[1].on,worstHour[1].tot)}%</p>
+            <p class="shame-sub">i rute den timen</p>
+          </div>` : ''}
+          ${bestHour ? `
+          <div class="shame-item">
+            <p class="shame-label">Beste time i dag</p>
+            <p class="shame-value">${String(bestHour[0]).padStart(2,'0')}:00 — ${pct(bestHour[1].on,bestHour[1].tot)}%</p>
+            <p class="shame-sub">i rute den timen</p>
+          </div>` : ''}
+          ${worstMode ? `
+          <div class="shame-item">
+            <p class="shame-label">Verste transportmiddel</p>
+            <p class="shame-value">${(MODES[worstMode[0]]||MODES.unknown).icon} ${(MODES[worstMode[0]]||MODES.unknown).label}</p>
+            <p class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% i rute — trenger forbedring</p>
+          </div>` : ''}
+          ${bestMode ? `
+          <div class="shame-item">
+            <p class="shame-label">Mest pålitelig</p>
+            <p class="shame-value">${(MODES[bestMode[0]]||MODES.unknown).icon} ${(MODES[bestMode[0]]||MODES.unknown).label}</p>
+            <p class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% i rute — 👏</p>
+          </div>` : ''}
+          ${worstSample && worstSlice ? `
+          <div class="shame-item">
+            <p class="shame-label">Verste måling (24t)</p>
+            <p class="shame-value">${pct(worstSlice.onTime,worstSlice.total)}% kl. ${fmtTime(worstSample.t)}</p>
+            <p class="shame-sub">${worstSlice.delayed} forsinket, ${worstSlice.cancelled} innstilt</p>
+          </div>` : ''}
+          <div class="shame-item">
+            <p class="shame-label">Datapunkter i dag</p>
+            <p class="shame-value">${todaySamples} målinger</p>
+            <p class="shame-sub">av ~${Math.round(86400/900)} mulige (15 min. intervall)</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer">
+      Sist oppdatert: ${new Date(db.updated).toLocaleString('no-NO')} ·
+      ${history.length} målinger lagret ·
+      <a href="https://github.com/PiE-Derby/oslo-on-time" target="_blank" rel="noopener">kildekode</a>
+    </p>
   `;
 
-  // Draw chart — filtered by mode
-  const chartPoints = chart.map(h => ({ t: h.t, s: modeSlice(h, mode) })).filter(p => p.s && p.s.total > 0);
-  const labels = chartPoints.map(p => fmtTime(p.t));
-  const values = chartPoints.map(p => pct(p.s.onTime, p.s.total));
+  // Chart
+  const chartPoints = chartHist.map(h => ({ t: h.t, s: modeSlice(h, mode) })).filter(p => p.s && p.s.total > 0);
   new Chart(document.getElementById('chart'), {
     type: 'line',
     data: {
-      labels,
+      labels: chartPoints.map(p => fmtTime(p.t)),
       datasets: [{
-        data: values,
+        data: chartPoints.map(p => pct(p.s.onTime, p.s.total)),
         borderColor: '#0cb6eb',
-        backgroundColor: (ctx) => {
+        backgroundColor: ctx => {
           const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 160);
           g.addColorStop(0, 'rgba(12,182,235,0.15)');
           g.addColorStop(1, 'rgba(12,182,235,0)');
           return g;
         },
-        borderWidth: 1.5,
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointHoverBackgroundColor: '#0cb6eb',
+        borderWidth: 1.5, fill: true, tension: 0.4,
+        pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#0cb6eb',
       }]
     },
     options: {
@@ -517,20 +535,14 @@ function render(db) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#1a1d25',
-          borderColor: 'rgba(255,255,255,0.08)',
-          borderWidth: 1,
-          titleColor: '#a0aab8',
-          bodyColor: '#fff',
-          padding: 10,
-          callbacks: { label: ctx => `${ctx.parsed.y}% on time` }
+          backgroundColor: '#1a1d25', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+          titleColor: '#8090a8', bodyColor: '#fff', padding: 10,
+          callbacks: { label: ctx => `${ctx.parsed.y}% i rute` }
         }
       },
       scales: {
-        x: { ticks: { maxTicksLimit: 7, font:{size:10}, color:'#4b5563' }, grid: { display: false }, border: { display: false } },
-        y: { min: 0, max: 100,
-             ticks: { callback: v => v+'%', font:{size:10}, color:'#4b5563', maxTicksLimit: 5 },
-             grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } }
+        x: { ticks: { maxTicksLimit: 7, font:{size:10}, color:'#8090a8' }, grid:{ display:false }, border:{ display:false } },
+        y: { min:0, max:100, ticks:{ callback: v => v+'%', font:{size:10}, color:'#8090a8', maxTicksLimit:5 }, grid:{ color:'rgba(255,255,255,0.04)' }, border:{ display:false } }
       }
     }
   });
@@ -538,77 +550,60 @@ function render(db) {
 
 async function load() {
   try {
-    const r = await fetch('data/stats.json?t=' + Date.now());
+    const r  = await fetch('data/stats.json?t=' + Date.now());
     const db = await r.json();
     if ((db.history||[]).length > 0) render(db);
     else document.getElementById('app').innerHTML =
-      '<div class="no-data"><h2>Warming up…</h2><p>First samples are being gathered.<br>Cron runs every 15 min — check back shortly.</p></div>';
+      '<div class="no-data"><h2>Starter opp…</h2><p>Første målinger samles inn.<br>Sjekk tilbake om et par minutter.</p></div>';
   } catch(e) {
     document.getElementById('app').innerHTML =
-      '<div class="no-data"><h2>Can\'t load stats</h2><p>'+e.message+'</p></div>';
+      `<div class="no-data"><h2>Kunne ikke laste data</h2><p>${e.message}</p></div>`;
   }
 }
 
 const REFRESH_SEC = 60;
-let countdown = REFRESH_SEC;
-let lastUpdated = null;
-let paused = false;
-let refreshTimer = null;
+let countdown = REFRESH_SEC, lastUpdated = null, paused = false, refreshTimer = null;
 
 function updateBadge() {
-  const label  = document.getElementById('refresh-label');
-  const badge  = document.getElementById('refresh-badge');
+  const label = document.getElementById('refresh-label');
+  const badge = document.getElementById('refresh-badge');
   if (!label || !badge) return;
   if (paused) {
     badge.classList.add('paused');
-    const agoSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : 0;
-    const agoStr = agoSec < 60 ? `${agoSec}s ago` : `${Math.round(agoSec/60)}m ago`;
-    label.textContent = `Paused · updated ${agoStr}`;
+    badge.setAttribute('aria-pressed', 'true');
+    const ago = lastUpdated ? Math.round((Date.now()-lastUpdated)/1000) : 0;
+    label.textContent = `Pauset · for ${ago < 60 ? ago+'s' : Math.round(ago/60)+'m'} siden`;
   } else {
     badge.classList.remove('paused');
+    badge.setAttribute('aria-pressed', 'false');
     if (countdown <= 0) {
-      label.textContent = 'Refreshing…';
+      label.textContent = 'Oppdaterer…';
     } else if (lastUpdated) {
-      const agoSec = Math.round((Date.now() - lastUpdated) / 1000);
-      const agoStr = agoSec < 60 ? `${agoSec}s ago` : `${Math.round(agoSec/60)}m ago`;
-      label.textContent = `Updated ${agoStr} · next in ${countdown}s`;
+      const ago = Math.round((Date.now()-lastUpdated)/1000);
+      label.textContent = `Oppdatert for ${ago < 60 ? ago+'s' : Math.round(ago/60)+'m'} siden · om ${countdown}s`;
     } else {
-      label.textContent = `Next refresh in ${countdown}s`;
+      label.textContent = `Neste oppdatering om ${countdown}s`;
     }
   }
 }
 
 function togglePause() {
   paused = !paused;
-  if (paused) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  } else {
-    countdown = REFRESH_SEC;
-    scheduleRefresh();
-  }
+  if (paused) { clearInterval(refreshTimer); refreshTimer = null; }
+  else { countdown = REFRESH_SEC; scheduleRefresh(); }
   updateBadge();
 }
 
 async function doRefresh() {
   if (paused) return;
-  countdown = 0;
-  updateBadge();
+  countdown = 0; updateBadge();
   await load();
-  lastUpdated = Date.now();
-  countdown = REFRESH_SEC;
+  lastUpdated = Date.now(); countdown = REFRESH_SEC;
 }
 
-function scheduleRefresh() {
-  refreshTimer = setInterval(doRefresh, REFRESH_SEC * 1000);
-}
+function scheduleRefresh() { refreshTimer = setInterval(doRefresh, REFRESH_SEC * 1000); }
 
-// Tick every second for countdown + "ago" display
-setInterval(() => {
-  if (!paused) countdown = Math.max(0, countdown - 1);
-  updateBadge();
-}, 1000);
-
+setInterval(() => { if (!paused) countdown = Math.max(0, countdown-1); updateBadge(); }, 1000);
 scheduleRefresh();
 load().then(() => { lastUpdated = Date.now(); updateBadge(); });
 </script>
