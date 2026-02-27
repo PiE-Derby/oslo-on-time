@@ -4,11 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oslo Transport — I Rute?</title>
-  <meta name="description" content="Er kollektivtrafikken i Oslo i rute? Ekte data hentet hvert 15. minutt via Entur.">
+  <meta name="description" content="Er kollektivtrafikken i Oslo i rute? Interaktivt kart og statistikk, oppdatert hvert 15. minutt.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -17,492 +19,502 @@
       --bg3:    #20242e;
       --border: rgba(255,255,255,0.07);
       --text:   #f0f2f5;
-      --muted:  #8090a8; /* bumped from #6b7280 — passes WCAG AA 5.19:1 */
+      --muted:  #8090a8;
       --cyan:   #0cb6eb;
       --green:  #22c55e;
       --amber:  #f59e0b;
-      --red:    #f05050; /* lightened from #ef4444 — passes WCAG AA 4.79:1 */
+      --red:    #f05050;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* Skip nav for keyboard users */
-    .skip-nav {
-      position: absolute; left: -999px; top: auto; width: 1px; height: 1px; overflow: hidden;
-    }
-    .skip-nav:focus {
-      position: fixed; left: 1rem; top: 1rem; width: auto; height: auto;
-      background: var(--cyan); color: #000; padding: 0.5rem 1rem; border-radius: 6px;
-      z-index: 9999; font-weight: 600; font-size: 0.875rem;
-    }
+    .skip-nav { position:absolute; left:-999px; width:1px; height:1px; overflow:hidden; }
+    .skip-nav:focus { position:fixed; left:1rem; top:1rem; width:auto; height:auto; background:var(--cyan); color:#000; padding:.5rem 1rem; border-radius:6px; z-index:9999; font-weight:600; }
 
     body {
       font-family: 'Inter', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
     }
-    body::before {
-      content: '';
-      position: fixed; inset: 0; z-index: 0;
-      background-image:
-        linear-gradient(rgba(12,182,235,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(12,182,235,0.025) 1px, transparent 1px);
-      background-size: 44px 44px;
-      pointer-events: none;
-      aria-hidden: true;
-    }
-
-    /* ── LAYOUT ── */
-    .page { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
 
     /* ── HEADER ── */
     .header {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap;
+      position: sticky; top: 0; z-index: 500;
+      background: rgba(17,19,24,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
     }
-    .logo { display: flex; align-items: center; gap: 0.85rem; }
-    .logo-mark { flex-shrink: 0; }
-    .logo-text h1 {
-      font-family: 'Urbanist', sans-serif;
-      font-size: 1.3rem; font-weight: 800;
-      letter-spacing: -0.03em; color: #fff;
-      line-height: 1.1;
-    }
-    .logo-text h1 span { color: var(--cyan); }
-    .logo-text p { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+    .logo { display: flex; align-items: center; gap: 0.7rem; }
+    .logo svg { flex-shrink: 0; }
+    .logo-text h1 { font-family:'Urbanist',sans-serif; font-size:1.1rem; font-weight:800; letter-spacing:-.03em; color:#fff; line-height:1; }
+    .logo-text h1 span { color:var(--cyan); }
+    .logo-text p { font-size:0.7rem; color:var(--muted); margin-top:.15rem; }
+    .header-right { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
 
-    /* Live badge — proper <button> for a11y */
     .live-badge {
-      display: flex; align-items: center; gap: 0.4rem;
-      font-family: inherit;
-      font-size: 0.72rem; font-weight: 500; color: var(--green);
-      background: rgba(34,197,94,0.08);
-      border: 1px solid rgba(34,197,94,0.2);
-      padding: 0.3rem 0.7rem; border-radius: 999px;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: color 0.2s, background 0.2s, border-color 0.2s;
+      display:flex; align-items:center; gap:.35rem;
+      font-family:inherit; font-size:.72rem; font-weight:500; color:var(--green);
+      background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.2);
+      padding:.28rem .65rem; border-radius:999px; cursor:pointer;
+      transition:all .2s; white-space:nowrap;
     }
-    .live-badge:focus-visible {
-      outline: 2px solid var(--cyan);
-      outline-offset: 2px;
-    }
-    .live-badge.paused {
-      color: var(--muted);
-      background: rgba(128,144,168,0.08);
-      border-color: rgba(128,144,168,0.2);
-    }
-    .live-badge .dot {
-      width: 6px; height: 6px; background: var(--green);
-      border-radius: 50%; animation: pulse 2s infinite;
-      transition: background 0.2s; flex-shrink: 0;
-      aria-hidden: true;
-    }
-    .live-badge.paused .dot { background: var(--muted); animation: none; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .live-badge:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+    .live-badge.paused { color:var(--muted); background:rgba(128,144,168,.08); border-color:rgba(128,144,168,.2); }
+    .live-badge .dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; flex-shrink:0; }
+    .live-badge.paused .dot { background:var(--muted); animation:none; }
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-    /* ── FILTER BUTTONS ── */
-    .filters {
-      display: flex; gap: 0.4rem; flex-wrap: wrap;
-      margin-bottom: 1.25rem;
+    /* ── MAP ── */
+    #map {
+      height: 420px;
+      width: 100%;
+      border-bottom: 1px solid var(--border);
+      z-index: 1;
     }
-    .filter-btn {
-      display: flex; align-items: center; gap: 0.35rem;
-      font-family: inherit;
-      font-size: 0.78rem; font-weight: 500;
-      padding: 0.35rem 0.85rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--bg2);
-      color: var(--muted);
-      cursor: pointer;
-      transition: all 0.15s;
-      white-space: nowrap;
+    .leaflet-popup-content-wrapper {
+      background: #1a1d25 !important;
+      border: 1px solid rgba(255,255,255,.1) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+      color: #f0f2f5 !important;
     }
-    .filter-btn:hover { border-color: rgba(12,182,235,0.3); color: var(--text); }
-    .filter-btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-    .filter-btn.active {
-      background: rgba(12,182,235,0.12);
-      border-color: rgba(12,182,235,0.4);
-      color: var(--cyan);
-    }
+    .leaflet-popup-tip { background: #1a1d25 !important; }
+    .leaflet-popup-content { margin: 10px 14px !important; font-family:'Inter',sans-serif; }
+    .popup-name { font-family:'Urbanist',sans-serif; font-size:1rem; font-weight:700; }
+    .popup-area { font-size:.72rem; color:#8090a8; margin-bottom:.5rem; }
+    .popup-pct  { font-family:'Urbanist',sans-serif; font-size:2rem; font-weight:800; line-height:1; }
+    .popup-meta { font-size:.75rem; color:#8090a8; margin-top:.2rem; }
 
-    /* ── HERO SCORE ── */
-    .hero-score {
+    /* ── CONTENT ── */
+    .content { max-width: 900px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+    /* ── SCORE BAR ── */
+    .score-bar {
+      display: flex; align-items: center; gap: 1.5rem;
       background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 16px; padding: 2rem; margin-bottom: 1rem;
-      display: flex; align-items: center; gap: 2rem;
-      position: relative; overflow: hidden;
+      border-radius: 14px; padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem; position: relative; overflow: hidden;
     }
-    .hero-score::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-    }
-    .big-num {
-      font-family: 'Urbanist', sans-serif;
-      font-size: 5.5rem; font-weight: 800;
-      letter-spacing: -0.05em; line-height: 1;
-      transition: color 0.4s;
-    }
-    .big-num.good { color: var(--green); }
-    .big-num.ok   { color: var(--amber); }
-    .big-num.bad  { color: var(--red); }
-    .score-meta { flex: 1; }
-    .verdict {
-      font-family: 'Urbanist', sans-serif;
-      font-size: 1.3rem; font-weight: 700;
-      color: #fff; letter-spacing: -0.02em;
-    }
-    .score-desc { font-size: 0.82rem; color: var(--muted); margin-top: 0.35rem; line-height: 1.6; }
-    .score-desc strong { color: #c9d4e0; }
+    .score-bar::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); }
+    .big-num { font-family:'Urbanist',sans-serif; font-size:4.5rem; font-weight:800; letter-spacing:-.05em; line-height:1; transition:color .4s; }
+    .big-num.good{color:var(--green)} .big-num.ok{color:var(--amber)} .big-num.bad{color:var(--red)}
+    .score-info { flex:1; }
+    .verdict { font-family:'Urbanist',sans-serif; font-size:1.2rem; font-weight:700; color:#fff; letter-spacing:-.02em; }
+    .score-desc { font-size:.8rem; color:var(--muted); margin-top:.3rem; line-height:1.6; }
+    .score-desc strong { color:#c9d4e0; }
 
-    /* ── STAT GRID ── */
-    .stat-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr);
-      gap: 0.75rem; margin-bottom: 1rem;
+    /* ── AREA FILTERS ── */
+    .section-label { font-size:.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:.6rem; margin-top:1.25rem; }
+
+    .area-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: .5rem; margin-bottom: 1.25rem;
     }
-    .stat {
+    .area-btn {
+      font-family: inherit; cursor: pointer;
       background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 1rem 1.1rem; text-align: center;
+      border-radius: 10px; padding: .7rem .9rem;
+      text-align: left; transition: all .15s;
+      display: flex; flex-direction: column; gap: .2rem;
     }
-    .stat .val {
-      font-family: 'Urbanist', sans-serif;
-      font-size: 2rem; font-weight: 800;
-      letter-spacing: -0.04em; line-height: 1;
-    }
-    .stat .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat .sub { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; opacity: 0.7; }
-    .stat.green .val { color: var(--green); }
-    .stat.amber .val { color: var(--amber); }
-    .stat.red   .val { color: var(--red); }
+    .area-btn:hover { border-color:rgba(12,182,235,.3); }
+    .area-btn:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+    .area-btn.active { background:rgba(12,182,235,.1); border-color:rgba(12,182,235,.4); }
+    .area-btn .area-name { font-size:.82rem; font-weight:600; color:var(--text); }
+    .area-btn .area-pct  { font-family:'Urbanist',sans-serif; font-size:1.4rem; font-weight:800; line-height:1; }
+    .area-btn .area-sub  { font-size:.68rem; color:var(--muted); }
+
+    /* ── STAT ROW ── */
+    .stat-row { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:1rem; }
+    .stat { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem; text-align:center; }
+    .stat .val { font-family:'Urbanist',sans-serif; font-size:1.9rem; font-weight:800; letter-spacing:-.04em; line-height:1; }
+    .stat .lbl { font-size:.68rem; color:var(--muted); margin-top:.25rem; font-weight:500; text-transform:uppercase; letter-spacing:.05em; }
+    .stat .sub { font-size:.68rem; color:var(--muted); margin-top:.15rem; opacity:.7; }
+    .stat.green .val{color:var(--green)} .stat.amber .val{color:var(--amber)} .stat.red .val{color:var(--red)}
 
     /* ── CARDS ── */
-    .card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;
-    }
-    .card-title {
-      font-size: 0.68rem; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.1em;
-      color: var(--muted); margin-bottom: 1.1rem;
-    }
-    .chart-wrap { position: relative; height: 160px; }
+    .card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:1.1rem 1.4rem; margin-bottom:1rem; }
+    .card h2 { font-size:.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:1rem; }
+    .chart-wrap { position:relative; height:150px; }
 
     /* Mode bars */
-    .mode-list { display: flex; flex-direction: column; gap: 0.9rem; }
-    .mode-row  { display: flex; align-items: center; gap: 0.9rem; }
-    .mode-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; }
-    .mode-name { font-size: 0.85rem; font-weight: 500; width: 72px; flex-shrink: 0; }
-    .mode-bar-bg { flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
-    .mode-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
-    .mode-pct { font-size: 0.82rem; font-weight: 600; width: 38px; text-align: right; }
-    .mode-count { font-size: 0.72rem; color: var(--muted); width: 64px; text-align: right; }
+    .mode-list { display:flex; flex-direction:column; gap:.8rem; }
+    .mode-row  { display:flex; align-items:center; gap:.8rem; }
+    .mode-icon { font-size:.95rem; width:20px; text-align:center; flex-shrink:0; }
+    .mode-name { font-size:.82rem; font-weight:500; width:70px; flex-shrink:0; }
+    .mode-bg   { flex:1; height:5px; background:rgba(255,255,255,.06); border-radius:3px; overflow:hidden; }
+    .mode-fill { height:100%; border-radius:3px; transition:width .5s; }
+    .mode-pct  { font-size:.8rem; font-weight:600; width:36px; text-align:right; }
+    .mode-cnt  { font-size:.7rem; color:var(--muted); width:60px; text-align:right; }
 
-    /* Shame stats */
-    .shame-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-    .shame-item {
-      background: var(--bg3); border: 1px solid var(--border);
-      border-radius: 10px; padding: 0.9rem 1rem;
+    /* Skamtavle */
+    .shame-grid { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; }
+    .shame-item { background:var(--bg3); border:1px solid var(--border); border-radius:10px; padding:.8rem .9rem; }
+    .shame-lbl  { font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:500; }
+    .shame-val  { font-family:'Urbanist',sans-serif; font-size:1.1rem; font-weight:700; color:#fff; margin-top:.2rem; }
+    .shame-sub  { font-size:.7rem; color:var(--muted); margin-top:.08rem; }
+
+    .footer { text-align:center; margin-top:2rem; font-size:.72rem; color:var(--muted); opacity:.45; }
+    .footer a { color:var(--muted); text-underline-offset:2px; }
+    .footer a:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; border-radius:2px; }
+
+    /* Transport filters */
+    .mode-filters { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+    .mode-btn {
+      display:flex; align-items:center; gap:.3rem; font-family:inherit;
+      font-size:.75rem; font-weight:500; padding:.3rem .75rem; border-radius:999px;
+      border:1px solid var(--border); background:var(--bg2); color:var(--muted);
+      cursor:pointer; transition:all .15s; white-space:nowrap;
     }
-    .shame-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
-    .shame-value { font-family: 'Urbanist', sans-serif; font-size: 1.2rem; font-weight: 700; color: #fff; margin-top: 0.25rem; }
-    .shame-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
+    .mode-btn:hover { border-color:rgba(12,182,235,.3); color:var(--text); }
+    .mode-btn:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+    .mode-btn.active { background:rgba(12,182,235,.12); border-color:rgba(12,182,235,.4); color:var(--cyan); }
 
-    .footer { text-align: center; margin-top: 2rem; font-size: 0.72rem; color: var(--muted); opacity: 0.5; }
-    .footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
-    .footer a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 2px; }
-
-    .no-data { text-align: center; padding: 5rem 1rem; color: var(--muted); }
-    .no-data h2 { font-family: 'Urbanist', sans-serif; font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
-    .no-data p  { font-size: 0.85rem; line-height: 1.7; }
-
-    @media (max-width: 500px) {
-      .hero-score { flex-direction: column; gap: 0.75rem; }
-      .big-num { font-size: 4rem; }
-      .shame-grid { grid-template-columns: 1fr; }
+    @media(max-width:550px) {
+      .score-bar { flex-direction:column; gap:.75rem; }
+      .big-num { font-size:3.5rem; }
+      .stat-row { grid-template-columns:repeat(3,1fr); }
+      .shame-grid { grid-template-columns:1fr; }
+      #map { height:300px; }
     }
   </style>
 </head>
 <body>
-
 <a href="#main" class="skip-nav">Hopp til innhold</a>
 
-<div class="page">
-  <div class="header">
-    <div class="logo">
-      <svg class="logo-mark" width="48" height="48" viewBox="0 0 64 64"
-           role="img" aria-label="Oslo Transport logo — tog med klokke"
-           xmlns="http://www.w3.org/2000/svg">
-        <rect width="64" height="64" rx="14" fill="#1a1d25"/>
-        <rect x="8" y="22" width="48" height="22" rx="6" fill="#0cb6eb"/>
-        <path d="M44 22 Q56 22 56 30 L56 44 L44 44 Z" fill="#0997c5"/>
-        <rect x="13" y="27" width="9" height="8" rx="2" fill="#111318" opacity="0.8"/>
-        <rect x="27" y="27" width="9" height="8" rx="2" fill="#111318" opacity="0.8"/>
-        <rect x="41" y="27" width="9" height="8" rx="2.5" fill="#111318" opacity="0.6"/>
-        <circle cx="18" cy="47" r="5" fill="#111318" stroke="#0cb6eb" stroke-width="2"/>
-        <circle cx="18" cy="47" r="2" fill="#0cb6eb"/>
-        <circle cx="46" cy="47" r="5" fill="#111318" stroke="#0cb6eb" stroke-width="2"/>
-        <circle cx="46" cy="47" r="2" fill="#0cb6eb"/>
-        <rect x="4" y="52" width="56" height="2.5" rx="1.25" fill="#2a3040"/>
-        <circle cx="50" cy="14" r="11" fill="#111318" stroke="#22c55e" stroke-width="2"/>
-        <circle cx="50" cy="14" r="1.5" fill="#22c55e"/>
-        <line x1="50" y1="14" x2="50" y2="7"  stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
-        <line x1="50" y1="14" x2="55" y2="14" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-      <div class="logo-text">
-        <h1>Oslo Transport — <span>I Rute?</span></h1>
-        <p>Hentet fra 5 knutepunkter via Entur · Oppdateres hvert 15. min</p>
-      </div>
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <svg width="36" height="36" viewBox="0 0 64 64" role="img" aria-label="Oslo Transport logo" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#1a1d25"/>
+      <rect x="8" y="22" width="48" height="22" rx="6" fill="#0cb6eb"/>
+      <path d="M44 22 Q56 22 56 30 L56 44 L44 44 Z" fill="#0997c5"/>
+      <rect x="13" y="27" width="9" height="8" rx="2" fill="#111318" opacity=".8"/>
+      <rect x="27" y="27" width="9" height="8" rx="2" fill="#111318" opacity=".8"/>
+      <rect x="41" y="27" width="9" height="8" rx="2.5" fill="#111318" opacity=".6"/>
+      <circle cx="18" cy="47" r="5" fill="#111318" stroke="#0cb6eb" stroke-width="2"/>
+      <circle cx="18" cy="47" r="2" fill="#0cb6eb"/>
+      <circle cx="46" cy="47" r="5" fill="#111318" stroke="#0cb6eb" stroke-width="2"/>
+      <circle cx="46" cy="47" r="2" fill="#0cb6eb"/>
+      <rect x="4" y="52" width="56" height="2.5" rx="1.25" fill="#2a3040"/>
+      <circle cx="50" cy="14" r="11" fill="#111318" stroke="#22c55e" stroke-width="2"/>
+      <circle cx="50" cy="14" r="1.5" fill="#22c55e"/>
+      <line x1="50" y1="14" x2="50" y2="7" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+      <line x1="50" y1="14" x2="55" y2="14" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div class="logo-text">
+      <h1>Oslo Transport — <span>I Rute?</span></h1>
+      <p>26 stoppesteder · 10 bydeler · oppdateres hvert 15. min</p>
     </div>
-    <button class="live-badge" id="refresh-badge"
-            onclick="togglePause()"
-            aria-label="Auto-oppdatering. Klikk for å pause eller gjenoppta."
-            aria-pressed="false">
+  </div>
+  <div class="header-right">
+    <button class="live-badge" id="refresh-badge" onclick="togglePause()"
+            aria-label="Auto-oppdatering. Klikk for å pause eller gjenoppta." aria-pressed="false">
       <div class="dot" aria-hidden="true"></div>
       <span id="refresh-label">Laster…</span>
     </button>
   </div>
+</header>
 
-  <div class="filters" role="group" aria-label="Filtrer på transportmiddel">
-    <button class="filter-btn active" type="button" data-mode="all"   aria-pressed="true"  onclick="setFilter('all')">🚦 Alle</button>
-    <button class="filter-btn"        type="button" data-mode="rail"  aria-pressed="false" onclick="setFilter('rail')">🚆 Tog</button>
-    <button class="filter-btn"        type="button" data-mode="metro" aria-pressed="false" onclick="setFilter('metro')">🚇 T-bane</button>
-    <button class="filter-btn"        type="button" data-mode="tram"  aria-pressed="false" onclick="setFilter('tram')">🚊 Trikk</button>
-    <button class="filter-btn"        type="button" data-mode="bus"   aria-pressed="false" onclick="setFilter('bus')">🚌 Buss</button>
+<!-- MAP -->
+<div id="map" role="img" aria-label="Kart over Oslo som viser punktlighet per stoppested"></div>
+
+<main id="main" class="content">
+
+  <!-- SCORE BAR -->
+  <div class="score-bar" id="score-bar">
+    <div class="big-num ok" id="big-num">–%</div>
+    <div class="score-info">
+      <p class="verdict" id="verdict">Laster…</p>
+      <p class="score-desc" id="score-desc"></p>
+    </div>
   </div>
 
-  <main id="main">
-    <div id="app">
-      <div class="no-data">
-        <h2>Samler inn data…</h2>
-        <p>Første målinger er på vei.<br>Sjekk tilbake om noen minutter.</p>
-      </div>
-    </div>
-  </main>
-</div>
+  <!-- TRANSPORT FILTERS -->
+  <p class="section-label">Transportmiddel</p>
+  <div class="mode-filters" role="group" aria-label="Filtrer på transportmiddel">
+    <button class="mode-btn active" type="button" data-mode="all"   aria-pressed="true"  onclick="setMode('all')">🚦 Alle</button>
+    <button class="mode-btn"        type="button" data-mode="rail"  aria-pressed="false" onclick="setMode('rail')">🚆 Tog</button>
+    <button class="mode-btn"        type="button" data-mode="metro" aria-pressed="false" onclick="setMode('metro')">🚇 T-bane</button>
+    <button class="mode-btn"        type="button" data-mode="tram"  aria-pressed="false" onclick="setMode('tram')">🚊 Trikk</button>
+    <button class="mode-btn"        type="button" data-mode="bus"   aria-pressed="false" onclick="setMode('bus')">🚌 Buss</button>
+  </div>
+
+  <!-- AREA FILTERS -->
+  <p class="section-label">Bydel</p>
+  <div class="area-grid" id="area-grid" role="group" aria-label="Filtrer på bydel"></div>
+
+  <!-- STATS -->
+  <div id="stats"></div>
+
+</main>
 
 <script>
-let activeFilter = 'all';
-let lastDb = null;
+// ── STATE ──────────────────────────────────────────────
+let db = null;
+let activeMode = 'all';
+let activeArea = 'all';
+let mapObj = null;
+let markers = {};
+let chartObj = null;
 
-function setFilter(mode) {
-  activeFilter = mode;
-  document.querySelectorAll('.filter-btn').forEach(b => {
+// ── CONSTANTS ──────────────────────────────────────────
+const MODES_NO = { rail:'Tog', metro:'T-bane', tram:'Trikk', bus:'Buss', water:'Ferge', unknown:'Annet' };
+const MODE_ICON = { rail:'🚆', metro:'🚇', tram:'🚊', bus:'🚌', water:'⛴️', unknown:'🚐' };
+
+const VERDICTS = [
+  [90, 'Går som smurt 🟢', 'good'],
+  [78, 'Stort sett i rute', 'ok'],
+  [65, 'Noen forsinkelser', 'ok'],
+  [50, 'Ganske kaotisk 🔴', 'bad'],
+  [0,  'Total kaos 🚨',     'bad'],
+];
+
+function pct(v,t) { return t>0 ? Math.round(v/t*100) : 0; }
+function barColor(p) { return p>=80?'#22c55e':p>=60?'#f59e0b':'#f05050'; }
+function fmtTime(ts) { return new Date(ts*1000).toLocaleTimeString('no-NO',{hour:'2-digit',minute:'2-digit'}); }
+function hourOf(ts)  { return new Date(ts*1000).getHours(); }
+
+// ── MAP INIT ───────────────────────────────────────────
+function initMap() {
+  mapObj = L.map('map', { zoomControl: true, attributionControl: true }).setView([59.92, 10.76], 12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd', maxZoom: 19
+  }).addTo(mapObj);
+}
+
+function updateMap(lastPoint, stops) {
+  if (!mapObj || !lastPoint || !stops) return;
+  const stopStats = lastPoint.stops || {};
+
+  for (const [id, info] of Object.entries(stops)) {
+    const s = stopStats[id];
+    const p = s ? pct(s.onTime, s.total) : null;
+    const color = p === null ? '#4b5563' : barColor(p);
+    const radius = s ? Math.max(8, Math.min(18, 8 + s.total/4)) : 7;
+
+    const circle = L.circleMarker([info.lat, info.lon], {
+      radius, color, fillColor: color, fillOpacity: 0.85,
+      weight: 2, opacity: 1
+    });
+
+    const label = p !== null
+      ? `<div class="popup-name">${info.name}</div>
+         <div class="popup-area">${info.area}</div>
+         <div class="popup-pct" style="color:${color}">${p}%</div>
+         <div class="popup-meta">i rute akkurat nå<br>${s.delayed} forsinket · ${s.cancelled} innstilt · ${s.total} avg.</div>`
+      : `<div class="popup-name">${info.name}</div><div class="popup-area">${info.area}</div><div class="popup-meta">Ingen data</div>`;
+
+    circle.bindPopup(label, { maxWidth: 200 });
+    circle.on('click', () => {
+      // highlight area
+      const areaName = info.area;
+      setArea(areaName);
+      document.getElementById('area-grid')
+        .querySelectorAll('.area-btn')
+        .forEach(b => b.classList.toggle('active', b.dataset.area === areaName));
+    });
+
+    if (markers[id]) { markers[id].remove(); }
+    markers[id] = circle;
+    circle.addTo(mapObj);
+  }
+}
+
+// ── SLICING ────────────────────────────────────────────
+function slicePoint(point, mode, area) {
+  const stops = db?.stops || {};
+  // Filter stops by area
+  const areaStopIds = area === 'all' ? null : Object.entries(stops).filter(([,s])=>s.area===area).map(([id])=>id);
+
+  if (mode === 'all' && area === 'all') {
+    return { total:point.total, onTime:point.onTime, delayed:point.delayed, cancelled:point.cancelled };
+  }
+
+  if (mode !== 'all' && area === 'all') {
+    const m = (point.modes||{})[mode];
+    return m ? { total:m.total, onTime:m.onTime, delayed:m.delayed||0, cancelled:m.cancelled||0 } : null;
+  }
+
+  // Area filter — aggregate from stop-level data
+  const stopStats = point.stops || {};
+  let total=0, onTime=0, delayed=0, cancelled=0;
+  for (const sid of (areaStopIds||[])) {
+    const s = stopStats[sid];
+    if (!s) continue;
+    total+=s.total; onTime+=s.onTime; delayed+=s.delayed||0; cancelled+=s.cancelled||0;
+  }
+  return total > 0 ? { total, onTime, delayed, cancelled } : null;
+}
+
+// ── AREA CARDS ─────────────────────────────────────────
+function buildAreaGrid(lastPoint) {
+  const stops = db?.stops || {};
+  const areas = {};
+  for (const [id, info] of Object.entries(stops)) {
+    if (!areas[info.area]) areas[info.area] = { total:0, onTime:0 };
+    const s = (lastPoint.stops||{})[id];
+    if (s) { areas[info.area].total+=s.total; areas[info.area].onTime+=s.onTime; }
+  }
+
+  const grid = document.getElementById('area-grid');
+  grid.innerHTML = `
+    <button class="area-btn active" type="button" data-area="all" aria-pressed="true" onclick="setArea('all')">
+      <span class="area-name">Hele Oslo</span>
+      <span class="area-pct" style="color:${barColor(pct(lastPoint.onTime,lastPoint.total))}">${pct(lastPoint.onTime,lastPoint.total)}%</span>
+      <span class="area-sub">alle stoppesteder</span>
+    </button>
+    ${Object.entries(areas).sort((a,b)=>a[0].localeCompare(b[0],'no')).map(([area,v])=>{
+      const p = pct(v.onTime,v.total);
+      return `<button class="area-btn" type="button" data-area="${area}" aria-pressed="false" onclick="setArea('${area}')">
+        <span class="area-name">${area}</span>
+        <span class="area-pct" style="color:${barColor(p)}">${p||'–'}%</span>
+        <span class="area-sub">i rute nå</span>
+      </button>`;
+    }).join('')}`;
+}
+
+function setArea(area) {
+  activeArea = area;
+  document.querySelectorAll('.area-btn').forEach(b => {
+    const active = b.dataset.area === area;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
+  if (db) renderStats();
+}
+
+function setMode(mode) {
+  activeMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
     const active = b.dataset.mode === mode;
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
-  if (lastDb) render(lastDb);
+  if (db) renderStats();
 }
 
-const MODES = {
-  rail:    { label: 'Tog',    icon: '🚆' },
-  metro:   { label: 'T-bane', icon: '🚇' },
-  tram:    { label: 'Trikk',  icon: '🚊' },
-  bus:     { label: 'Buss',   icon: '🚌' },
-  water:   { label: 'Ferge',  icon: '⛴️' },
-  unknown: { label: 'Annet',  icon: '🚐' },
-};
+// ── MAIN RENDER ────────────────────────────────────────
+function render() {
+  if (!db || !db.history.length) return;
+  const last    = db.history[db.history.length-1];
+  const stops   = db.stops || {};
 
-const VERDICTS = [
-  [90, 'Går som smurt 🟢',          'good'],
-  [78, 'Stort sett i rute',          'ok'],
-  [65, 'Noen forsinkelser i dag',    'ok'],
-  [50, 'Ganske kaotisk 🔴',          'bad'],
-  [0,  'Total kaos 🚨',              'bad'],
-];
-
-function pct(v, t) { return t > 0 ? Math.round(v / t * 100) : 0; }
-
-function barColor(p) {
-  if (p >= 80) return '#22c55e';
-  if (p >= 60) return '#f59e0b';
-  return '#f05050';
+  buildAreaGrid(last);
+  updateMap(last, stops);
+  renderStats();
 }
 
-function fmtTime(ts) {
-  return new Date(ts * 1000).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
-}
+function renderStats() {
+  const history = db.history;
+  const now24 = Date.now()/1000 - 86400;
+  const now48 = Date.now()/1000 - 172800;
+  const last   = history[history.length-1];
+  const recent = history.filter(h=>h.t>=now24);
+  const chart  = history.filter(h=>h.t>=now48);
 
-function hourOf(ts) {
-  return new Date(ts * 1000).getUTCHours();
-}
-
-function modeSlice(h, mode) {
-  if (mode === 'all') return { total: h.total, onTime: h.onTime, delayed: h.delayed, cancelled: h.cancelled };
-  const m = (h.modes || {})[mode];
-  if (!m) return null;
-  return { total: m.total, onTime: m.onTime, delayed: m.delayed || 0, cancelled: m.cancelled || 0 };
-}
-
-function render(db) {
-  lastDb = db;
-  const history = db.history || [];
-  if (!history.length) return;
-
-  const mode  = activeFilter;
-  const now24 = Date.now() / 1000 - 86400;
-  const now48 = Date.now() / 1000 - 172800;
-  const last      = history[history.length - 1];
-  const recent    = history.filter(h => h.t >= now24);
-  const chartHist = history.filter(h => h.t >= now48);
-
-  const lastSlice = modeSlice(last, mode) || { total:0, onTime:0, delayed:0, cancelled:0 };
-
-  const t24 = recent.reduce((a, h) => {
-    const s = modeSlice(h, mode);
+  // Aggregate
+  const t24 = recent.reduce((a,h) => {
+    const s = slicePoint(h, activeMode, activeArea);
     if (!s) return a;
     a.total+=s.total; a.onTime+=s.onTime; a.delayed+=s.delayed; a.cancelled+=s.cancelled;
     return a;
-  }, { total:0, onTime:0, delayed:0, cancelled:0 });
+  }, {total:0,onTime:0,delayed:0,cancelled:0});
 
-  const avg24  = pct(t24.onTime, t24.total);
+  const lastSlice = slicePoint(last, activeMode, activeArea) || {total:0,onTime:0,delayed:0,cancelled:0};
+  const avg24 = pct(t24.onTime, t24.total);
   const nowPct = pct(lastSlice.onTime, lastSlice.total);
-  const [, verdict, cls] = VERDICTS.find(([thresh]) => avg24 >= thresh);
+  const [,verdict,cls] = VERDICTS.find(([t])=>avg24>=t);
 
-  // Mode aggregation
-  const modes = {};
+  // Score bar
+  document.getElementById('big-num').textContent = avg24+'%';
+  document.getElementById('big-num').className = `big-num ${cls}`;
+  document.getElementById('verdict').textContent = verdict;
+  const modeStr = activeMode!=='all' ? `${MODE_ICON[activeMode]||''} Kun ${MODES_NO[activeMode]||activeMode} · ` : '';
+  const areaStr = activeArea!=='all' ? `📍 ${activeArea} · ` : '';
+  document.getElementById('score-desc').innerHTML =
+    `${modeStr}${areaStr}<strong>${t24.total.toLocaleString('no-NO')}</strong> avganger siste 24t · <strong>${t24.delayed}</strong> forsinket · <strong>${t24.cancelled}</strong> innstilt`;
+
+  // Mode aggregation for bars
+  const modeAgg = {};
   for (const h of recent) {
-    for (const [m, v] of Object.entries(h.modes || {})) {
-      if (!modes[m]) modes[m] = { total:0, onTime:0, delayed:0 };
-      modes[m].total   += v.total;
-      modes[m].onTime  += v.onTime;
-      modes[m].delayed += (v.delayed || 0);
+    for (const [m,v] of Object.entries(h.modes||{})) {
+      if (!modeAgg[m]) modeAgg[m]={total:0,onTime:0,delayed:0};
+      modeAgg[m].total+=v.total; modeAgg[m].onTime+=v.onTime; modeAgg[m].delayed+=(v.delayed||0);
     }
   }
-  const modesSorted = Object.entries(modes).filter(([,v]) => v.total > 5).sort((a,b) => b[1].total - a[1].total);
+  const modesSorted = Object.entries(modeAgg).filter(([,v])=>v.total>5).sort((a,b)=>b[1].total-a[1].total);
 
   // By hour
-  const byHour = {};
+  const byHour={};
   for (const h of recent) {
-    const s = modeSlice(h, mode);
-    if (!s || !s.total) continue;
-    const hr = hourOf(h.t);
-    if (!byHour[hr]) byHour[hr] = { on:0, tot:0 };
-    byHour[hr].on  += s.onTime;
-    byHour[hr].tot += s.total;
+    const s=slicePoint(h,activeMode,activeArea);
+    if(!s||!s.total) continue;
+    const hr=hourOf(h.t);
+    if(!byHour[hr])byHour[hr]={on:0,tot:0};
+    byHour[hr].on+=s.onTime; byHour[hr].tot+=s.total;
   }
-  const hourEntries = Object.entries(byHour).filter(([,v]) => v.tot > 0);
-  const worstHour = hourEntries.slice().sort((a,b) => pct(a[1].on,a[1].tot) - pct(b[1].on,b[1].tot))[0];
-  const bestHour  = hourEntries.slice().sort((a,b) => pct(b[1].on,b[1].tot) - pct(a[1].on,a[1].tot))[0];
+  const hrs = Object.entries(byHour).filter(([,v])=>v.tot>0);
+  const worstHour = hrs.slice().sort((a,b)=>pct(a[1].on,a[1].tot)-pct(b[1].on,b[1].tot))[0];
+  const bestHour  = hrs.slice().sort((a,b)=>pct(b[1].on,b[1].tot)-pct(a[1].on,a[1].tot))[0];
+  const worstMode = modesSorted.slice().sort((a,b)=>pct(a[1].onTime,a[1].total)-pct(b[1].onTime,b[1].total))[0];
+  const bestMode  = modesSorted.slice().sort((a,b)=>pct(b[1].onTime,b[1].total)-pct(a[1].onTime,a[1].total))[0];
+  const worstSamp = [...recent].filter(h=>{const s=slicePoint(h,activeMode,activeArea);return s&&s.total>0;})
+    .sort((a,b)=>pct(slicePoint(a,activeMode,activeArea).onTime,slicePoint(a,activeMode,activeArea).total)-pct(slicePoint(b,activeMode,activeArea).onTime,slicePoint(b,activeMode,activeArea).total))[0];
+  const worstSampSlice = worstSamp?slicePoint(worstSamp,activeMode,activeArea):null;
+  const todaySamples = history.filter(h=>h.t>=new Date().setHours(0,0,0,0)/1000).length;
 
-  const worstMode = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(a[1].onTime,a[1].total) - pct(b[1].onTime,b[1].total))[0] : null;
-  const bestMode  = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(b[1].onTime,b[1].total) - pct(a[1].onTime,a[1].total))[0] : null;
+  // Chart data
+  const chartPts = chart.map(h=>({t:h.t,s:slicePoint(h,activeMode,activeArea)})).filter(p=>p.s&&p.s.total>0);
 
-  const worstSample = [...recent]
-    .filter(h => { const s = modeSlice(h,mode); return s && s.total > 0; })
-    .sort((a,b) => pct(modeSlice(a,mode).onTime,modeSlice(a,mode).total) - pct(modeSlice(b,mode).onTime,modeSlice(b,mode).total))[0];
-  const worstSlice = worstSample ? modeSlice(worstSample, mode) : null;
-
-  const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
-  const todaySamples = history.filter(h => h.t >= todayStart.getTime()/1000).length;
-
-  document.getElementById('app').innerHTML = `
-    <section aria-label="Hovedstatistikk">
-      <div class="hero-score">
-        <div class="big-num ${cls}" aria-label="${avg24} prosent i rute siste 24 timer">${avg24}%</div>
-        <div class="score-meta">
-          <p class="verdict">${verdict}</p>
-          <p class="score-desc">
-            ${mode !== 'all' ? `<strong>${(MODES[mode]||MODES.unknown).icon} Kun ${(MODES[mode]||MODES.unknown).label}</strong> · ` : ''}
-            <strong>${t24.total.toLocaleString('no-NO')}</strong> avganger siste 24t<br>
-            <strong>${t24.delayed}</strong> forsinket · <strong>${t24.cancelled}</strong> innstilt · <strong>${t24.onTime}</strong> i rute
-          </p>
-        </div>
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-row">
+      <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
+        <p class="val">${nowPct}%</p><p class="lbl">I rute nå</p><p class="sub">${lastSlice.onTime} av ${lastSlice.total}</p>
       </div>
-
-      <div class="stat-grid">
-        <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
-          <p class="val">${nowPct}%</p>
-          <p class="lbl">I rute nå</p>
-          <p class="sub">${lastSlice.onTime} av ${lastSlice.total}</p>
-        </div>
-        <div class="stat amber">
-          <p class="val">${pct(lastSlice.delayed, lastSlice.total)}%</p>
-          <p class="lbl">Forsinket nå</p>
-          <p class="sub">${lastSlice.delayed} av ${lastSlice.total}</p>
-        </div>
-        <div class="stat red">
-          <p class="val">${lastSlice.cancelled > 0 ? pct(lastSlice.cancelled,lastSlice.total)+'%' : '0%'}</p>
-          <p class="lbl">Innstilt</p>
-          <p class="sub">${lastSlice.cancelled} av ${lastSlice.total}</p>
-        </div>
+      <div class="stat amber">
+        <p class="val">${pct(lastSlice.delayed,lastSlice.total)}%</p><p class="lbl">Forsinket nå</p><p class="sub">${lastSlice.delayed} av ${lastSlice.total}</p>
       </div>
-    </section>
-
-    <section aria-label="Punktlighet siste 48 timer">
-      <div class="card">
-        <h2 class="card-title">Punktlighet — siste 48 timer</h2>
-        <div class="chart-wrap">
-          <canvas id="chart" role="img" aria-label="Linjediagram som viser punktlighet i prosent over tid"></canvas>
-        </div>
+      <div class="stat red">
+        <p class="val">${lastSlice.cancelled>0?pct(lastSlice.cancelled,lastSlice.total)+'%':'0%'}</p><p class="lbl">Innstilt</p><p class="sub">${lastSlice.cancelled} av ${lastSlice.total}</p>
       </div>
-    </section>
+    </div>
 
-    <section aria-label="Per transportmiddel">
-      <div class="card">
-        <h2 class="card-title">Per transportmiddel — 24t snitt</h2>
-        <div class="mode-list" role="list">
-          ${modesSorted.map(([m, v]) => {
-            const p = pct(v.onTime, v.total);
-            const info = MODES[m] || MODES.unknown;
-            return `<div class="mode-row" role="listitem">
-              <span class="mode-icon" aria-hidden="true">${info.icon}</span>
-              <span class="mode-name">${info.label}</span>
-              <div class="mode-bar-bg" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${info.label}: ${p}% i rute">
-                <div class="mode-bar-fill" style="width:${p}%;background:${barColor(p)}"></div>
-              </div>
-              <span class="mode-pct" style="color:${barColor(p)}">${p}%</span>
-              <span class="mode-count">${v.total.toLocaleString('no-NO')} avg.</span>
-            </div>`;
-          }).join('') || '<p style="color:var(--muted);font-size:0.85rem">Mangler data…</p>'}
-        </div>
-      </div>
-    </section>
+    <div class="card">
+      <h2>Punktlighet — siste 48 timer</h2>
+      <div class="chart-wrap"><canvas id="chart" role="img" aria-label="Linjediagram punktlighet over tid"></canvas></div>
+    </div>
 
-    <section aria-label="Statistikk og skamtavle">
-      <div class="card">
-        <h2 class="card-title">Statistikk &amp; Skamtavle</h2>
-        <div class="shame-grid">
-          ${worstHour ? `
-          <div class="shame-item">
-            <p class="shame-label">Verste time i dag</p>
-            <p class="shame-value">${String(worstHour[0]).padStart(2,'0')}:00 — ${pct(worstHour[1].on,worstHour[1].tot)}%</p>
-            <p class="shame-sub">i rute den timen</p>
-          </div>` : ''}
-          ${bestHour ? `
-          <div class="shame-item">
-            <p class="shame-label">Beste time i dag</p>
-            <p class="shame-value">${String(bestHour[0]).padStart(2,'0')}:00 — ${pct(bestHour[1].on,bestHour[1].tot)}%</p>
-            <p class="shame-sub">i rute den timen</p>
-          </div>` : ''}
-          ${worstMode ? `
-          <div class="shame-item">
-            <p class="shame-label">Verste transportmiddel</p>
-            <p class="shame-value">${(MODES[worstMode[0]]||MODES.unknown).icon} ${(MODES[worstMode[0]]||MODES.unknown).label}</p>
-            <p class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% i rute — trenger forbedring</p>
-          </div>` : ''}
-          ${bestMode ? `
-          <div class="shame-item">
-            <p class="shame-label">Mest pålitelig</p>
-            <p class="shame-value">${(MODES[bestMode[0]]||MODES.unknown).icon} ${(MODES[bestMode[0]]||MODES.unknown).label}</p>
-            <p class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% i rute — 👏</p>
-          </div>` : ''}
-          ${worstSample && worstSlice ? `
-          <div class="shame-item">
-            <p class="shame-label">Verste måling (24t)</p>
-            <p class="shame-value">${pct(worstSlice.onTime,worstSlice.total)}% kl. ${fmtTime(worstSample.t)}</p>
-            <p class="shame-sub">${worstSlice.delayed} forsinket, ${worstSlice.cancelled} innstilt</p>
-          </div>` : ''}
-          <div class="shame-item">
-            <p class="shame-label">Datapunkter i dag</p>
-            <p class="shame-value">${todaySamples} målinger</p>
-            <p class="shame-sub">av ~${Math.round(86400/900)} mulige (15 min. intervall)</p>
+    <div class="card">
+      <h2>Per transportmiddel — 24t snitt</h2>
+      <div class="mode-list" role="list">
+        ${modesSorted.map(([m,v])=>{const p=pct(v.onTime,v.total);return `
+        <div class="mode-row" role="listitem">
+          <span class="mode-icon" aria-hidden="true">${MODE_ICON[m]||'🚐'}</span>
+          <span class="mode-name">${MODES_NO[m]||m}</span>
+          <div class="mode-bg" role="progressbar" aria-valuenow="${p}" aria-valuemin="0" aria-valuemax="100" aria-label="${MODES_NO[m]||m}: ${p}% i rute">
+            <div class="mode-fill" style="width:${p}%;background:${barColor(p)}"></div>
           </div>
-        </div>
+          <span class="mode-pct" style="color:${barColor(p)}">${p}%</span>
+          <span class="mode-cnt">${v.total.toLocaleString('no-NO')} avg.</span>
+        </div>`}).join('')||'<p style="color:var(--muted);font-size:.85rem">Mangler data…</p>'}
       </div>
-    </section>
+    </div>
+
+    <div class="card">
+      <h2>Statistikk &amp; Skamtavle</h2>
+      <div class="shame-grid">
+        ${worstHour?`<div class="shame-item"><p class="shame-lbl">Verste time i dag</p><p class="shame-val">${String(worstHour[0]).padStart(2,'0')}:00 — ${pct(worstHour[1].on,worstHour[1].tot)}%</p><p class="shame-sub">i rute den timen</p></div>`:''}
+        ${bestHour?`<div class="shame-item"><p class="shame-lbl">Beste time i dag</p><p class="shame-val">${String(bestHour[0]).padStart(2,'0')}:00 — ${pct(bestHour[1].on,bestHour[1].tot)}%</p><p class="shame-sub">i rute den timen</p></div>`:''}
+        ${worstMode?`<div class="shame-item"><p class="shame-lbl">Verste transportmiddel</p><p class="shame-val">${MODE_ICON[worstMode[0]]||''} ${MODES_NO[worstMode[0]]||worstMode[0]}</p><p class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% i rute — trenger forbedring</p></div>`:''}
+        ${bestMode?`<div class="shame-item"><p class="shame-lbl">Mest pålitelig</p><p class="shame-val">${MODE_ICON[bestMode[0]]||''} ${MODES_NO[bestMode[0]]||bestMode[0]}</p><p class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% i rute 👏</p></div>`:''}
+        ${worstSamp&&worstSampSlice?`<div class="shame-item"><p class="shame-lbl">Verste måling (24t)</p><p class="shame-val">${pct(worstSampSlice.onTime,worstSampSlice.total)}% kl. ${fmtTime(worstSamp.t)}</p><p class="shame-sub">${worstSampSlice.delayed} forsinket, ${worstSampSlice.cancelled} innstilt</p></div>`:''}
+        <div class="shame-item"><p class="shame-lbl">Datapunkter i dag</p><p class="shame-val">${todaySamples} målinger</p><p class="shame-sub">av ~${Math.round(86400/900)} mulige</p></div>
+      </div>
+    </div>
 
     <p class="footer">
       Sist oppdatert: ${new Date(db.updated).toLocaleString('no-NO')} ·
@@ -511,101 +523,76 @@ function render(db) {
     </p>
   `;
 
-  // Chart
-  const chartPoints = chartHist.map(h => ({ t: h.t, s: modeSlice(h, mode) })).filter(p => p.s && p.s.total > 0);
-  new Chart(document.getElementById('chart'), {
-    type: 'line',
-    data: {
-      labels: chartPoints.map(p => fmtTime(p.t)),
-      datasets: [{
-        data: chartPoints.map(p => pct(p.s.onTime, p.s.total)),
-        borderColor: '#0cb6eb',
-        backgroundColor: ctx => {
-          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 160);
-          g.addColorStop(0, 'rgba(12,182,235,0.15)');
-          g.addColorStop(1, 'rgba(12,182,235,0)');
-          return g;
-        },
-        borderWidth: 1.5, fill: true, tension: 0.4,
-        pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#0cb6eb',
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1a1d25', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
-          titleColor: '#8090a8', bodyColor: '#fff', padding: 10,
-          callbacks: { label: ctx => `${ctx.parsed.y}% i rute` }
-        }
+  // Draw / update chart
+  if (chartObj) { chartObj.destroy(); chartObj = null; }
+  const canvas = document.getElementById('chart');
+  if (canvas && chartPts.length) {
+    chartObj = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: chartPts.map(p=>fmtTime(p.t)),
+        datasets: [{
+          data: chartPts.map(p=>pct(p.s.onTime,p.s.total)),
+          borderColor:'#0cb6eb',
+          backgroundColor: ctx=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,150);g.addColorStop(0,'rgba(12,182,235,.15)');g.addColorStop(1,'rgba(12,182,235,0)');return g;},
+          borderWidth:1.5, fill:true, tension:0.4, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:'#0cb6eb',
+        }]
       },
-      scales: {
-        x: { ticks: { maxTicksLimit: 7, font:{size:10}, color:'#8090a8' }, grid:{ display:false }, border:{ display:false } },
-        y: { min:0, max:100, ticks:{ callback: v => v+'%', font:{size:10}, color:'#8090a8', maxTicksLimit:5 }, grid:{ color:'rgba(255,255,255,0.04)' }, border:{ display:false } }
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{backgroundColor:'#1a1d25',borderColor:'rgba(255,255,255,.08)',borderWidth:1,titleColor:'#8090a8',bodyColor:'#fff',padding:10,callbacks:{label:ctx=>`${ctx.parsed.y}% i rute`}}
+        },
+        scales:{
+          x:{ticks:{maxTicksLimit:7,font:{size:10},color:'#8090a8'},grid:{display:false},border:{display:false}},
+          y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10},color:'#8090a8',maxTicksLimit:5},grid:{color:'rgba(255,255,255,.04)'},border:{display:false}}
+        }
       }
-    }
-  });
+    });
+  }
 }
 
+// ── REFRESH ────────────────────────────────────────────
 async function load() {
   try {
-    const r  = await fetch('data/stats.json?t=' + Date.now());
-    const db = await r.json();
-    if ((db.history||[]).length > 0) render(db);
-    else document.getElementById('app').innerHTML =
-      '<div class="no-data"><h2>Starter opp…</h2><p>Første målinger samles inn.<br>Sjekk tilbake om et par minutter.</p></div>';
-  } catch(e) {
-    document.getElementById('app').innerHTML =
-      `<div class="no-data"><h2>Kunne ikke laste data</h2><p>${e.message}</p></div>`;
-  }
+    const r = await fetch('data/stats.json?t='+Date.now());
+    db = await r.json();
+    if (db.history?.length) render();
+    else document.getElementById('stats').innerHTML =
+      '<div style="text-align:center;padding:3rem;color:var(--muted)"><h2 style="font-family:Urbanist,sans-serif;color:#fff">Starter opp…</h2><p style="margin-top:.5rem;font-size:.85rem">Første data samles inn.</p></div>';
+  } catch(e) { console.error(e); }
 }
 
-const REFRESH_SEC = 60;
-let countdown = REFRESH_SEC, lastUpdated = null, paused = false, refreshTimer = null;
-
-function updateBadge() {
-  const label = document.getElementById('refresh-label');
-  const badge = document.getElementById('refresh-badge');
-  if (!label || !badge) return;
-  if (paused) {
-    badge.classList.add('paused');
-    badge.setAttribute('aria-pressed', 'true');
-    const ago = lastUpdated ? Math.round((Date.now()-lastUpdated)/1000) : 0;
-    label.textContent = `Pauset · for ${ago < 60 ? ago+'s' : Math.round(ago/60)+'m'} siden`;
+const REFRESH_SEC=60; let countdown=REFRESH_SEC, lastUpdated=null, paused=false, refreshTimer=null;
+function updateBadge(){
+  const label=document.getElementById('refresh-label'), badge=document.getElementById('refresh-badge');
+  if(!label||!badge)return;
+  if(paused){
+    badge.classList.add('paused'); badge.setAttribute('aria-pressed','true');
+    const ago=lastUpdated?Math.round((Date.now()-lastUpdated)/1000):0;
+    label.textContent=`Pauset · ${ago<60?ago+'s':Math.round(ago/60)+'m'} siden`;
   } else {
-    badge.classList.remove('paused');
-    badge.setAttribute('aria-pressed', 'false');
-    if (countdown <= 0) {
-      label.textContent = 'Oppdaterer…';
-    } else if (lastUpdated) {
-      const ago = Math.round((Date.now()-lastUpdated)/1000);
-      label.textContent = `Oppdatert for ${ago < 60 ? ago+'s' : Math.round(ago/60)+'m'} siden · om ${countdown}s`;
-    } else {
-      label.textContent = `Neste oppdatering om ${countdown}s`;
-    }
+    badge.classList.remove('paused'); badge.setAttribute('aria-pressed','false');
+    if(countdown<=0) label.textContent='Oppdaterer…';
+    else if(lastUpdated){const ago=Math.round((Date.now()-lastUpdated)/1000);label.textContent=`For ${ago<60?ago+'s':Math.round(ago/60)+'m'} siden · om ${countdown}s`;}
+    else label.textContent=`Om ${countdown}s`;
   }
 }
-
-function togglePause() {
-  paused = !paused;
-  if (paused) { clearInterval(refreshTimer); refreshTimer = null; }
-  else { countdown = REFRESH_SEC; scheduleRefresh(); }
+function togglePause(){
+  paused=!paused;
+  if(paused){clearInterval(refreshTimer);refreshTimer=null;}
+  else{countdown=REFRESH_SEC;scheduleRefresh();}
   updateBadge();
 }
+async function doRefresh(){if(paused)return;countdown=0;updateBadge();await load();lastUpdated=Date.now();countdown=REFRESH_SEC;}
+function scheduleRefresh(){refreshTimer=setInterval(doRefresh,REFRESH_SEC*1000);}
+setInterval(()=>{if(!paused)countdown=Math.max(0,countdown-1);updateBadge();},1000);
 
-async function doRefresh() {
-  if (paused) return;
-  countdown = 0; updateBadge();
-  await load();
-  lastUpdated = Date.now(); countdown = REFRESH_SEC;
-}
-
-function scheduleRefresh() { refreshTimer = setInterval(doRefresh, REFRESH_SEC * 1000); }
-
-setInterval(() => { if (!paused) countdown = Math.max(0, countdown-1); updateBadge(); }, 1000);
+// ── INIT ───────────────────────────────────────────────
+initMap();
 scheduleRefresh();
-load().then(() => { lastUpdated = Date.now(); updateBadge(); });
+load().then(()=>{lastUpdated=Date.now();updateBadge();});
 </script>
 </body>
 </html>
