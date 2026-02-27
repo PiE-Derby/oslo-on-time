@@ -55,7 +55,7 @@ function enturQuery(stopId) {
     stopPlace(id: "${stopId}") {
       estimatedCalls(timeRange: 600, numberOfDepartures: 30) {
         realtime cancellation aimedDepartureTime expectedDepartureTime
-        serviceJourney { journeyPattern { line { transportMode } } }
+        serviceJourney { journeyPattern { line { transportMode publicCode name } } }
       }
     }
   }` });
@@ -64,21 +64,27 @@ function enturQuery(stopId) {
 function tally(calls) {
   let total=0, onTime=0, delayed=0, cancelled=0;
   const modes = {};
+  const lines = {};
   for (const c of calls) {
     if (!c.realtime) continue;
     total++;
-    const mode = c.serviceJourney?.journeyPattern?.line?.transportMode ?? 'unknown';
+    const line    = c.serviceJourney?.journeyPattern?.line;
+    const mode    = line?.transportMode ?? 'unknown';
+    const lineKey = `${mode}:${line?.publicCode ?? '?'}`;
+    const lineName = line?.publicCode ?? '?';
     if (!modes[mode]) modes[mode] = {total:0,onTime:0,delayed:0,cancelled:0};
+    if (!lines[lineKey]) lines[lineKey] = {mode, name: lineName, total:0, onTime:0, delayed:0, cancelled:0};
     modes[mode].total++;
+    lines[lineKey].total++;
     if (c.cancellation) {
-      cancelled++; modes[mode].cancelled++;
+      cancelled++; modes[mode].cancelled++; lines[lineKey].cancelled++;
     } else {
       const diff = Math.round((new Date(c.expectedDepartureTime) - new Date(c.aimedDepartureTime)) / 60000);
-      if (diff > 1) { delayed++; modes[mode].delayed++; }
-      else          { onTime++;  modes[mode].onTime++;  }
+      if (diff > 1) { delayed++; modes[mode].delayed++; lines[lineKey].delayed++; }
+      else          { onTime++;  modes[mode].onTime++;  lines[lineKey].onTime++;  }
     }
   }
-  return { total, onTime, delayed, cancelled, modes };
+  return { total, onTime, delayed, cancelled, modes, lines };
 }
 
 async function fetchStop(id) {
@@ -114,6 +120,7 @@ async function main() {
   const stopStats = {};
   let globalTotal=0, globalOnTime=0, globalDelayed=0, globalCancelled=0;
   const globalModes = {};
+  const globalLines = {};
 
   for (const [id] of Object.entries(STOPS)) {
     try {
@@ -128,6 +135,10 @@ async function main() {
         if (!globalModes[m]) globalModes[m] = {total:0,onTime:0,delayed:0,cancelled:0};
         for (const k of ['total','onTime','delayed','cancelled']) globalModes[m][k] += v[k]||0;
       }
+      for (const [lk, v] of Object.entries(t.lines)) {
+        if (!globalLines[lk]) globalLines[lk] = {mode:v.mode, name:v.name, total:0,onTime:0,delayed:0,cancelled:0};
+        for (const k of ['total','onTime','delayed','cancelled']) globalLines[lk][k] += v[k]||0;
+      }
     } catch(e) { console.error(`Failed ${id}:`, e.message); }
   }
 
@@ -137,6 +148,7 @@ async function main() {
     t: Math.floor(Date.now() / 1000),
     total: globalTotal, onTime: globalOnTime, delayed: globalDelayed, cancelled: globalCancelled,
     modes: globalModes,
+    lines: globalLines,
     stops: stopStats,
   };
 

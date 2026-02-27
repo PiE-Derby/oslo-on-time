@@ -160,6 +160,43 @@
     .footer a { color:var(--muted); text-underline-offset:2px; }
     .footer a:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; border-radius:2px; }
 
+    /* ── TREND ARROW ── */
+    .trend {
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-family: 'Urbanist', sans-serif; font-size: 1rem; font-weight: 700;
+      padding: .2rem .55rem; border-radius: 6px; margin-left: .5rem;
+      vertical-align: middle;
+    }
+    .trend.up   { color: var(--green); background: rgba(34,197,94,.12); }
+    .trend.down { color: var(--red);   background: rgba(240,80,80,.12); }
+    .trend.flat { color: var(--muted); background: rgba(128,144,168,.1); }
+
+    /* ── RUSHTID ── */
+    .rush-badge {
+      display: none; align-items: center; gap: .35rem;
+      font-family: inherit; font-size: .72rem; font-weight: 600;
+      color: #fff; background: rgba(240,80,80,.2);
+      border: 1px solid rgba(240,80,80,.4);
+      padding: .28rem .7rem; border-radius: 999px; white-space: nowrap;
+    }
+    .rush-badge.visible { display: flex; }
+
+    /* ── AREA RANKING ── */
+    .area-rank-list { display: flex; flex-direction: column; gap: .55rem; }
+    .area-rank-row {
+      display: flex; align-items: center; gap: .75rem;
+      cursor: pointer; padding: .45rem .6rem; border-radius: 8px;
+      border: 1px solid transparent; transition: all .15s;
+    }
+    .area-rank-row:hover { background: rgba(255,255,255,.03); border-color: rgba(12,182,235,.2); }
+    .area-rank-row:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .area-rank-row.active { background: rgba(12,182,235,.08); border-color: rgba(12,182,235,.3); }
+    .rank-num  { font-size: .72rem; color: var(--muted); width: 16px; text-align: center; flex-shrink: 0; }
+    .rank-name { font-size: .82rem; font-weight: 500; width: 130px; flex-shrink: 0; }
+    .rank-bg   { flex: 1; height: 6px; background: rgba(255,255,255,.05); border-radius: 3px; overflow: hidden; }
+    .rank-fill { height: 100%; border-radius: 3px; transition: width .6s; }
+    .rank-pct  { font-size: .82rem; font-weight: 700; width: 38px; text-align: right; }
+
     /* Transport filters */
     .mode-filters { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.25rem; }
     .mode-btn {
@@ -210,6 +247,9 @@
     </div>
   </div>
   <div class="header-right">
+    <div class="rush-badge" id="rush-badge" role="status" aria-live="polite">
+      🚨 <span id="rush-label">Rushtid nå</span>
+    </div>
     <button class="live-badge" id="refresh-badge" onclick="togglePause()"
             aria-label="Auto-oppdatering. Klikk for å pause eller gjenoppta." aria-pressed="false">
       <div class="dot" aria-hidden="true"></div>
@@ -276,6 +316,60 @@ function pct(v,t) { return t>0 ? Math.round(v/t*100) : 0; }
 function barColor(p) { return p>=80?'#22c55e':p>=60?'#f59e0b':'#f05050'; }
 function fmtTime(ts) { return new Date(ts*1000).toLocaleTimeString('no-NO',{hour:'2-digit',minute:'2-digit'}); }
 function hourOf(ts)  { return new Date(ts*1000).getHours(); }
+
+// Oslo time: UTC+1 (UTC+2 summer — simplified, close enough)
+function osloHour() {
+  const d = new Date();
+  const oslo = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Oslo' }));
+  return oslo.getHours();
+}
+
+function isRushHour() {
+  const h = osloHour();
+  return (h >= 7 && h < 9) || (h >= 15 && h < 18);
+}
+
+function rushLabel() {
+  const h = osloHour();
+  if (h >= 7  && h < 9)  return '🚨 Morgenrush (07–09)';
+  if (h >= 15 && h < 18) return '🚨 Ettermiddagsrush (15–18)';
+  return '';
+}
+
+// Trend: compare last ~30min avg vs 60–90min ago
+function calcTrend(history, mode, area) {
+  const now = Date.now() / 1000;
+  const recent = history.filter(h => h.t >= now - 1800); // last 30min
+  const before = history.filter(h => h.t >= now - 5400 && h.t < now - 1800); // 30–90min ago
+  if (!recent.length || !before.length) return null;
+
+  const avg = arr => {
+    const t = arr.reduce((a,h)=>{ const s=slicePoint(h,mode,area); return s?{tot:a.tot+s.total,on:a.on+s.onTime}:a; }, {tot:0,on:0});
+    return t.tot > 0 ? pct(t.on, t.tot) : null;
+  };
+
+  const r = avg(recent), b = avg(before);
+  if (r === null || b === null) return null;
+  const diff = r - b;
+  if (diff > 3)  return { dir:'up',   diff, label: `+${diff}pp`, html: `▲ +${diff}pp` };
+  if (diff < -3) return { dir:'down', diff, label: `${diff}pp`,  html: `▼ ${diff}pp` };
+  return { dir:'flat', diff: 0, label: '→ stabilt', html: '→ stabilt' };
+}
+
+// Aggregate lines across history samples
+function aggregateLines(history) {
+  const lines = {};
+  for (const h of history) {
+    for (const [lk, v] of Object.entries(h.lines || {})) {
+      if (!lines[lk]) lines[lk] = { mode:v.mode, name:v.name, total:0, onTime:0, delayed:0, cancelled:0 };
+      lines[lk].total     += v.total;
+      lines[lk].onTime    += v.onTime;
+      lines[lk].delayed   += v.delayed   || 0;
+      lines[lk].cancelled += v.cancelled || 0;
+    }
+  }
+  return lines;
+}
 
 // ── MAP INIT ───────────────────────────────────────────
 function initMap() {
@@ -366,7 +460,7 @@ function slicePoint(point, mode, area) {
   return total > 0 ? { total, onTime, delayed, cancelled } : null;
 }
 
-// ── AREA CARDS ─────────────────────────────────────────
+// ── AREA RANKING ───────────────────────────────────────
 function buildAreaGrid(lastPoint) {
   const stops = db?.stops || {};
   const areas = {};
@@ -376,33 +470,47 @@ function buildAreaGrid(lastPoint) {
     if (s) { areas[info.area].total+=s.total; areas[info.area].onTime+=s.onTime; }
   }
 
+  // Sort worst → best
+  const sorted = Object.entries(areas)
+    .map(([area,v]) => ({ area, p: pct(v.onTime,v.total), total: v.total }))
+    .sort((a,b) => a.p - b.p);
+
+  const allPct = pct(lastPoint.onTime, lastPoint.total);
   const grid = document.getElementById('area-grid');
+
   grid.innerHTML = `
-    <button class="area-btn active" type="button" data-area="all" aria-pressed="true" onclick="setArea('all')">
-      <span class="area-name">Hele Oslo</span>
-      <span class="area-pct" style="color:${barColor(pct(lastPoint.onTime,lastPoint.total))}">${pct(lastPoint.onTime,lastPoint.total)}%</span>
-      <span class="area-sub">alle stoppesteder</span>
-    </button>
-    ${Object.entries(areas).sort((a,b)=>a[0].localeCompare(b[0],'no')).map(([area,v])=>{
-      const p = pct(v.onTime,v.total);
-      return `<button class="area-btn" type="button" data-area="${area}" aria-pressed="false" onclick="setArea('${area}')">
-        <span class="area-name">${area}</span>
-        <span class="area-pct" style="color:${barColor(p)}">${p||'–'}%</span>
-        <span class="area-sub">i rute nå</span>
-      </button>`;
-    }).join('')}`;
+    <div class="area-rank-list" role="list">
+      <div class="area-rank-row active" role="listitem button" tabindex="0"
+           data-area="all" aria-pressed="true"
+           onclick="setArea('all')" onkeydown="if(event.key==='Enter')setArea('all')">
+        <span class="rank-num">—</span>
+        <span class="rank-name" style="font-weight:700;color:#fff">Hele Oslo</span>
+        <div class="rank-bg"><div class="rank-fill" style="width:${allPct}%;background:${barColor(allPct)}"></div></div>
+        <span class="rank-pct" style="color:${barColor(allPct)}">${allPct}%</span>
+      </div>
+      ${sorted.map(({area, p}, i) => `
+      <div class="area-rank-row" role="listitem button" tabindex="0"
+           data-area="${area}" aria-pressed="false"
+           onclick="setArea('${area}')" onkeydown="if(event.key==='Enter')setArea('${area}')">
+        <span class="rank-num" style="${i===0?'color:var(--red)':i===sorted.length-1?'color:var(--green)':''}">
+          ${i===0?'💀':i===sorted.length-1?'👑':i+1}
+        </span>
+        <span class="rank-name">${area}</span>
+        <div class="rank-bg"><div class="rank-fill" style="width:${p}%;background:${barColor(p)}"></div></div>
+        <span class="rank-pct" style="color:${barColor(p)}">${p||'–'}%</span>
+      </div>`).join('')}
+    </div>`;
 }
 
 function setArea(area) {
   activeArea = area;
-  document.querySelectorAll('.area-btn').forEach(b => {
+  document.querySelectorAll('.area-rank-row, .area-btn').forEach(b => {
     const active = b.dataset.area === area;
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
   filterMapByArea(area);
   if (db) renderStats();
-  // Scroll map into view when drilling into an area from the cards below
   if (area !== 'all') document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -419,14 +527,30 @@ function setMode(mode) {
 // ── MAIN RENDER ────────────────────────────────────────
 function render() {
   if (!db || !db.history.length) return;
-  const last    = db.history[db.history.length-1];
-  const stops   = db.stops || {};
+  const last  = db.history[db.history.length-1];
+  const stops = db.stops || {};
+
+  // Rush hour badge
+  const rushEl = document.getElementById('rush-badge');
+  const rushLabelEl = document.getElementById('rush-label');
+  if (rushEl) {
+    const rush = isRushHour();
+    rushEl.classList.toggle('visible', rush);
+    if (rush && rushLabelEl) rushLabelEl.textContent = rushLabel().replace('🚨 ','');
+  }
 
   buildAreaGrid(last);
   updateMap(last, stops);
-  filterMapByArea(activeArea); // re-apply after markers rebuilt
+  filterMapByArea(activeArea);
   renderStats();
 }
+
+// Keep rush badge in sync every minute even without data refresh
+setInterval(() => {
+  const el = document.getElementById('rush-badge');
+  const lb = document.getElementById('rush-label');
+  if (el) { el.classList.toggle('visible', isRushHour()); if (lb) lb.textContent = rushLabel().replace('🚨 ',''); }
+}, 60000);
 
 function renderStats() {
   const history = db.history;
@@ -449,8 +573,14 @@ function renderStats() {
   const nowPct = pct(lastSlice.onTime, lastSlice.total);
   const [,verdict,cls] = VERDICTS.find(([t])=>avg24>=t);
 
+  // Trend
+  const trend = calcTrend(history, activeMode, activeArea);
+  const trendHtml = trend
+    ? `<span class="trend ${trend.dir}" title="Siste 30 min vs 30–90 min siden">${trend.html}</span>`
+    : '';
+
   // Score bar
-  document.getElementById('big-num').textContent = avg24+'%';
+  document.getElementById('big-num').innerHTML = avg24+'%' + trendHtml;
   document.getElementById('big-num').className = `big-num ${cls}`;
   document.getElementById('verdict').textContent = verdict;
   const modeStr = activeMode!=='all' ? `${MODE_ICON[activeMode]||''} Kun ${MODES_NO[activeMode]||activeMode} · ` : '';
@@ -486,6 +616,14 @@ function renderStats() {
     .sort((a,b)=>pct(slicePoint(a,activeMode,activeArea).onTime,slicePoint(a,activeMode,activeArea).total)-pct(slicePoint(b,activeMode,activeArea).onTime,slicePoint(b,activeMode,activeArea).total))[0];
   const worstSampSlice = worstSamp?slicePoint(worstSamp,activeMode,activeArea):null;
   const todaySamples = history.filter(h=>h.t>=new Date().setHours(0,0,0,0)/1000).length;
+
+  // Line rankings — aggregate across last 24h, min 8 trips to qualify
+  const linesAgg = aggregateLines(recent);
+  const linesSorted = Object.values(linesAgg)
+    .filter(l => l.total >= 8 && (activeMode === 'all' || l.mode === activeMode))
+    .sort((a,b) => pct(a.onTime,a.total) - pct(b.onTime,b.total));
+  const worstLine = linesSorted[0] || null;
+  const bestLine  = linesSorted[linesSorted.length-1] || null;
 
   // Chart data
   const chartPts = chart.map(h=>({t:h.t,s:slicePoint(h,activeMode,activeArea)})).filter(p=>p.s&&p.s.total>0);
@@ -529,9 +667,11 @@ function renderStats() {
       <div class="shame-grid">
         ${worstHour?`<div class="shame-item"><p class="shame-lbl">Verste time i dag</p><p class="shame-val">${String(worstHour[0]).padStart(2,'0')}:00 — ${pct(worstHour[1].on,worstHour[1].tot)}%</p><p class="shame-sub">i rute den timen</p></div>`:''}
         ${bestHour?`<div class="shame-item"><p class="shame-lbl">Beste time i dag</p><p class="shame-val">${String(bestHour[0]).padStart(2,'0')}:00 — ${pct(bestHour[1].on,bestHour[1].tot)}%</p><p class="shame-sub">i rute den timen</p></div>`:''}
-        ${worstMode?`<div class="shame-item"><p class="shame-lbl">Verste transportmiddel</p><p class="shame-val">${MODE_ICON[worstMode[0]]||''} ${MODES_NO[worstMode[0]]||worstMode[0]}</p><p class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% i rute — trenger forbedring</p></div>`:''}
+        ${worstMode?`<div class="shame-item"><p class="shame-lbl">Verste transportmiddel</p><p class="shame-val">${MODE_ICON[worstMode[0]]||''} ${MODES_NO[worstMode[0]]||worstMode[0]}</p><p class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% i rute</p></div>`:''}
         ${bestMode?`<div class="shame-item"><p class="shame-lbl">Mest pålitelig</p><p class="shame-val">${MODE_ICON[bestMode[0]]||''} ${MODES_NO[bestMode[0]]||bestMode[0]}</p><p class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% i rute 👏</p></div>`:''}
-        ${worstSamp&&worstSampSlice?`<div class="shame-item"><p class="shame-lbl">Verste måling (24t)</p><p class="shame-val">${pct(worstSampSlice.onTime,worstSampSlice.total)}% kl. ${fmtTime(worstSamp.t)}</p><p class="shame-sub">${worstSampSlice.delayed} forsinket, ${worstSampSlice.cancelled} innstilt</p></div>`:''}
+        ${worstLine?`<div class="shame-item"><p class="shame-lbl">💀 Verste linje (24t)</p><p class="shame-val">${MODE_ICON[worstLine.mode]||'🚐'} Linje ${worstLine.name}</p><p class="shame-sub">${pct(worstLine.onTime,worstLine.total)}% i rute · ${worstLine.delayed} forsinkelser</p></div>`:''}
+        ${bestLine?`<div class="shame-item"><p class="shame-lbl">👑 Beste linje (24t)</p><p class="shame-val">${MODE_ICON[bestLine.mode]||'🚐'} Linje ${bestLine.name}</p><p class="shame-sub">${pct(bestLine.onTime,bestLine.total)}% i rute · ${bestLine.total} avganger</p></div>`:''}
+        ${worstSamp&&worstSampSlice?`<div class="shame-item"><p class="shame-lbl">Verste enkeltmåling</p><p class="shame-val">${pct(worstSampSlice.onTime,worstSampSlice.total)}% kl. ${fmtTime(worstSamp.t)}</p><p class="shame-sub">${worstSampSlice.delayed} forsinket, ${worstSampSlice.cancelled} innstilt</p></div>`:''}
         <div class="shame-item"><p class="shame-lbl">Datapunkter i dag</p><p class="shame-val">${todaySamples} målinger</p><p class="shame-sub">av ~${Math.round(86400/900)} mulige</p></div>
       </div>
     </div>
