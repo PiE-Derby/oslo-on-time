@@ -62,8 +62,15 @@
       border: 1px solid rgba(34,197,94,0.2);
       padding: 0.3rem 0.7rem; border-radius: 999px;
       white-space: nowrap;
+      transition: color 0.2s, background 0.2s, border-color 0.2s;
     }
-    .live-badge .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+    .live-badge.paused {
+      color: var(--muted);
+      background: rgba(107,114,128,0.08);
+      border-color: rgba(107,114,128,0.2);
+    }
+    .live-badge .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; transition: background 0.2s; }
+    .live-badge.paused .dot { background: var(--muted); animation: none; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
     /* ── HERO SCORE ── */
@@ -187,7 +194,10 @@
       <h1>Oslo Transit — <span>On Time?</span></h1>
       <p>Sampled from 5 major hubs via Entur · Updated every 15 min</p>
     </div>
-    <div class="live-badge" id="refresh-badge"><div class="dot"></div> <span id="refresh-label">Loading…</span></div>
+    <div class="live-badge" id="refresh-badge" onclick="togglePause()" title="Click to pause/resume" style="cursor:pointer;user-select:none">
+      <div class="dot" id="refresh-dot"></div>
+      <span id="refresh-label">Loading…</span>
+    </div>
   </div>
 
   <div id="app"><div class="no-data"><h2>Collecting data…</h2><p>First samples are being gathered.<br>Check back in a few minutes.</p></div></div>
@@ -453,22 +463,46 @@ async function load() {
 const REFRESH_SEC = 60;
 let countdown = REFRESH_SEC;
 let lastUpdated = null;
+let paused = false;
+let refreshTimer = null;
 
 function updateBadge() {
-  const label = document.getElementById('refresh-label');
-  if (!label) return;
-  if (countdown <= 0) {
-    label.textContent = 'Refreshing…';
-  } else if (lastUpdated) {
-    const agoSec = Math.round((Date.now() - lastUpdated) / 1000);
+  const label  = document.getElementById('refresh-label');
+  const badge  = document.getElementById('refresh-badge');
+  if (!label || !badge) return;
+  if (paused) {
+    badge.classList.add('paused');
+    const agoSec = lastUpdated ? Math.round((Date.now() - lastUpdated) / 1000) : 0;
     const agoStr = agoSec < 60 ? `${agoSec}s ago` : `${Math.round(agoSec/60)}m ago`;
-    label.textContent = `Updated ${agoStr} · next in ${countdown}s`;
+    label.textContent = `Paused · updated ${agoStr}`;
   } else {
-    label.textContent = `Next refresh in ${countdown}s`;
+    badge.classList.remove('paused');
+    if (countdown <= 0) {
+      label.textContent = 'Refreshing…';
+    } else if (lastUpdated) {
+      const agoSec = Math.round((Date.now() - lastUpdated) / 1000);
+      const agoStr = agoSec < 60 ? `${agoSec}s ago` : `${Math.round(agoSec/60)}m ago`;
+      label.textContent = `Updated ${agoStr} · next in ${countdown}s`;
+    } else {
+      label.textContent = `Next refresh in ${countdown}s`;
+    }
   }
 }
 
-async function refresh() {
+function togglePause() {
+  paused = !paused;
+  if (paused) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  } else {
+    countdown = REFRESH_SEC;
+    scheduleRefresh();
+  }
+  updateBadge();
+}
+
+async function doRefresh() {
+  if (paused) return;
   countdown = 0;
   updateBadge();
   await load();
@@ -476,13 +510,17 @@ async function refresh() {
   countdown = REFRESH_SEC;
 }
 
+function scheduleRefresh() {
+  refreshTimer = setInterval(doRefresh, REFRESH_SEC * 1000);
+}
+
+// Tick every second for countdown + "ago" display
 setInterval(() => {
-  countdown = Math.max(0, countdown - 1);
+  if (!paused) countdown = Math.max(0, countdown - 1);
   updateBadge();
 }, 1000);
 
-setInterval(refresh, REFRESH_SEC * 1000);
-
+scheduleRefresh();
 load().then(() => { lastUpdated = Date.now(); updateBadge(); });
 </script>
 </body>
