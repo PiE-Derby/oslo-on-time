@@ -619,7 +619,8 @@ function renderStats() {
   const worstSamp = [...recent].filter(h=>{const s=slicePoint(h,activeMode,activeArea);return s&&s.total>0;})
     .sort((a,b)=>pct(slicePoint(a,activeMode,activeArea).onTime,slicePoint(a,activeMode,activeArea).total)-pct(slicePoint(b,activeMode,activeArea).onTime,slicePoint(b,activeMode,activeArea).total))[0];
   const worstSampSlice = worstSamp?slicePoint(worstSamp,activeMode,activeArea):null;
-  const todaySamples = history.filter(h=>h.t>=new Date().setHours(0,0,0,0)/1000).length;
+  const todayStr = dateStr();
+  const todaySamples = history.filter(h => dateStr(new Date(h.t * 1000)) === todayStr).length;
 
   // Line rankings — aggregate across last 24h, min 8 trips to qualify
   const linesAgg = aggregateLines(recent);
@@ -718,10 +719,46 @@ function renderStats() {
 }
 
 // ── REFRESH ────────────────────────────────────────────
+function dateStr(d = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(d);
+}
+
 async function load() {
   try {
-    const r = await fetch('data/stats.json?t='+Date.now());
-    db = await r.json();
+    const bust = '?t=' + Date.now();
+
+    // 1. Latest snapshot + stop metadata (tiny, fast)
+    const latestRes = await fetch('data/latest.json' + bust);
+    if (!latestRes.ok) throw new Error('latest.json not found');
+    const latest = await latestRes.json();
+
+    // 2. Today's history
+    const today = dateStr();
+    let history = [];
+    try {
+      const todayRes = await fetch(`data/${today}.json` + bust);
+      if (todayRes.ok) history = await todayRes.json();
+    } catch(e) {}
+
+    // 3. Yesterday's history (for 48h chart), best-effort
+    const yesterday = dateStr(new Date(Date.now() - 86400000));
+    if (yesterday !== today) {
+      try {
+        const yestRes = await fetch(`data/${yesterday}.json`);
+        if (yestRes.ok) {
+          const yest = await yestRes.json();
+          history = [...yest, ...history];
+        }
+      } catch(e) {}
+    }
+
+    // If daily file is empty/missing, fall back to snapshot as only data point
+    if (!history.length && latest.snapshot) history = [latest.snapshot];
+
+    db = { stops: latest.stops, updated: latest.updated, history };
+
     if (db.history?.length) render();
     else document.getElementById('stats').innerHTML =
       '<div style="text-align:center;padding:3rem;color:var(--muted)"><h2 style="font-family:Urbanist,sans-serif;color:#fff">Starter opp…</h2><p style="margin-top:.5rem;font-size:.85rem">Første data samles inn.</p></div>';
