@@ -1,1 +1,1 @@
-{"updated":null,"history":[]}
+{"updated":"2026-02-27T14:07:05.933Z","history":[{"t":1772201225,"total":80,"onTime":52,"delayed":28,"cancelled":0,"modes":{"rail":{"total":15,"onTime":7,"delayed":8,"cancelled":0},"bus":{"total":32,"onTime":21,"delayed":11,"cancelled":0},"metro":{"total":29,"onTime":23,"delayed":6,"cancelled":0},"tram":{"total":4,"onTime":1,"delayed":3,"cancelled":0}}}]}
