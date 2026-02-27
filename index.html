@@ -187,7 +187,7 @@
       <h1>Oslo Transit — <span>On Time?</span></h1>
       <p>Sampled from 5 major hubs via Entur · Updated every 15 min</p>
     </div>
-    <div class="live-badge"><div class="dot"></div> Live</div>
+    <div class="live-badge" id="refresh-badge"><div class="dot"></div> <span id="refresh-label">Loading…</span></div>
   </div>
 
   <div id="app"><div class="no-data"><h2>Collecting data…</h2><p>First samples are being gathered.<br>Check back in a few minutes.</p></div></div>
@@ -450,8 +450,40 @@ async function load() {
   }
 }
 
-load();
-setInterval(load, 60000); // refresh every 60s
+const REFRESH_SEC = 60;
+let countdown = REFRESH_SEC;
+let lastUpdated = null;
+
+function updateBadge() {
+  const label = document.getElementById('refresh-label');
+  if (!label) return;
+  if (countdown <= 0) {
+    label.textContent = 'Refreshing…';
+  } else if (lastUpdated) {
+    const agoSec = Math.round((Date.now() - lastUpdated) / 1000);
+    const agoStr = agoSec < 60 ? `${agoSec}s ago` : `${Math.round(agoSec/60)}m ago`;
+    label.textContent = `Updated ${agoStr} · next in ${countdown}s`;
+  } else {
+    label.textContent = `Next refresh in ${countdown}s`;
+  }
+}
+
+async function refresh() {
+  countdown = 0;
+  updateBadge();
+  await load();
+  lastUpdated = Date.now();
+  countdown = REFRESH_SEC;
+}
+
+setInterval(() => {
+  countdown = Math.max(0, countdown - 1);
+  updateBadge();
+}, 1000);
+
+setInterval(refresh, REFRESH_SEC * 1000);
+
+load().then(() => { lastUpdated = Date.now(); updateBadge(); });
 </script>
 </body>
 </html>
