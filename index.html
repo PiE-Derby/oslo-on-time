@@ -309,18 +309,34 @@ function updateMap(lastPoint, stops) {
       : `<div class="popup-name">${info.name}</div><div class="popup-area">${info.area}</div><div class="popup-meta">Ingen data</div>`;
 
     circle.bindPopup(label, { maxWidth: 200 });
-    circle.on('click', () => {
-      // highlight area
-      const areaName = info.area;
-      setArea(areaName);
-      document.getElementById('area-grid')
-        .querySelectorAll('.area-btn')
-        .forEach(b => b.classList.toggle('active', b.dataset.area === areaName));
-    });
+    circle.on('click', () => setArea(info.area));
 
-    if (markers[id]) { markers[id].remove(); }
-    markers[id] = circle;
+    if (markers[id]) { markers[id].circle.remove(); }
+    markers[id] = { circle, area: info.area, lat: info.lat, lon: info.lon, baseColor: color, baseRadius: radius };
     circle.addTo(mapObj);
+  }
+}
+
+// ── MAP AREA FILTER ────────────────────────────────────
+function filterMapByArea(area) {
+  if (!mapObj) return;
+  const bounds = [];
+
+  for (const [, m] of Object.entries(markers)) {
+    const inArea = area === 'all' || m.area === area;
+    m.circle.setStyle({
+      fillOpacity: inArea ? 0.85 : 0.12,
+      opacity:     inArea ? 1    : 0.2,
+      weight:      inArea ? 2    : 1,
+    });
+    m.circle.setRadius(inArea ? m.baseRadius : Math.max(5, m.baseRadius * 0.7));
+    if (inArea) bounds.push([m.lat, m.lon]);
+  }
+
+  if (area === 'all') {
+    mapObj.flyTo([59.92, 10.76], 12, { animate: true, duration: 0.6 });
+  } else if (bounds.length) {
+    mapObj.flyToBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true, duration: 0.7 });
   }
 }
 
@@ -384,7 +400,10 @@ function setArea(area) {
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
+  filterMapByArea(area);
   if (db) renderStats();
+  // Scroll map into view when drilling into an area from the cards below
+  if (area !== 'all') document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function setMode(mode) {
@@ -405,6 +424,7 @@ function render() {
 
   buildAreaGrid(last);
   updateMap(last, stops);
+  filterMapByArea(activeArea); // re-apply after markers rebuilt
   renderStats();
 }
 
