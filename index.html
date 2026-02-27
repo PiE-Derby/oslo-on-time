@@ -4,286 +4,450 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oslo Transit — On Time?</title>
-  <meta name="description" content="Is Oslo public transport running on schedule? Live stats updated every 15 minutes.">
+  <meta name="description" content="Is Oslo public transport running on schedule? Real stats updated every 15 minutes.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
+    :root {
+      --bg:     #111318;
+      --bg2:    #1a1d25;
+      --bg3:    #20242e;
+      --border: rgba(255,255,255,0.07);
+      --text:   #f0f2f5;
+      --muted:  #6b7280;
+      --cyan:   #0cb6eb;
+      --green:  #22c55e;
+      --amber:  #f59e0b;
+      --red:    #ef4444;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Inter', system-ui, sans-serif;
-      background: #f5f4f0;
-      color: #111;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
-      padding: 2rem 1rem;
+      -webkit-font-smoothing: antialiased;
     }
-    .wrap { max-width: 640px; margin: 0 auto; }
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(12,182,235,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(12,182,235,0.025) 1px, transparent 1px);
+      background-size: 44px 44px;
+      pointer-events: none;
+    }
 
-    header { margin-bottom: 2rem; }
-    header h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; }
-    header p  { font-size: 0.85rem; color: #888; margin-top: 0.25rem; }
+    /* ── LAYOUT ── */
+    .page { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
 
-    /* Big score */
-    .score-card {
-      background: #fff;
-      border: 1px solid #e8e7e2;
-      border-radius: 12px;
-      padding: 2rem 1.5rem;
+    /* ── HEADER ── */
+    .header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;
+    }
+    .header h1 {
+      font-family: 'Urbanist', sans-serif;
+      font-size: 1.5rem; font-weight: 800;
+      letter-spacing: -0.03em; color: #fff;
+    }
+    .header h1 span { color: var(--cyan); }
+    .header p { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+    .live-badge {
+      display: flex; align-items: center; gap: 0.4rem;
+      font-size: 0.72rem; font-weight: 500; color: var(--green);
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.2);
+      padding: 0.3rem 0.7rem; border-radius: 999px;
+      white-space: nowrap;
+    }
+    .live-badge .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── HERO SCORE ── */
+    .hero-score {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
       margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
+      display: flex; align-items: center; gap: 2rem;
+      position: relative; overflow: hidden;
     }
-    .score-pct {
-      font-size: 4rem;
-      font-weight: 700;
-      letter-spacing: -0.03em;
+    .hero-score::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+    .big-num {
+      font-family: 'Urbanist', sans-serif;
+      font-size: 5.5rem;
+      font-weight: 800;
+      letter-spacing: -0.05em;
       line-height: 1;
+      transition: color 0.4s;
     }
-    .score-pct.good    { color: #16a34a; }
-    .score-pct.ok      { color: #d97706; }
-    .score-pct.bad     { color: #dc2626; }
+    .big-num.good   { color: var(--green); }
+    .big-num.ok     { color: var(--amber); }
+    .big-num.bad    { color: var(--red); }
     .score-meta { flex: 1; }
-    .score-meta .verdict {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 0.3rem;
+    .verdict {
+      font-family: 'Urbanist', sans-serif;
+      font-size: 1.3rem; font-weight: 700;
+      color: #fff; letter-spacing: -0.02em;
     }
-    .score-meta .detail { font-size: 0.8rem; color: #888; line-height: 1.6; }
+    .score-desc { font-size: 0.82rem; color: var(--muted); margin-top: 0.35rem; line-height: 1.6; }
+    .score-desc strong { color: #c9d4e0; }
 
-    /* Stat row */
-    .stat-row {
+    /* ── STAT GRID ── */
+    .stat-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 0.75rem;
       margin-bottom: 1rem;
     }
-    .stat-box {
-      background: #fff;
-      border: 1px solid #e8e7e2;
-      border-radius: 10px;
-      padding: 1rem;
+    .stat {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1rem 1.1rem;
       text-align: center;
     }
-    .stat-box .val { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
-    .stat-box .lbl { font-size: 0.72rem; color: #999; margin-top: 0.2rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
-    .stat-box.green .val { color: #16a34a; }
-    .stat-box.amber .val { color: #d97706; }
-    .stat-box.red   .val { color: #dc2626; }
+    .stat .val {
+      font-family: 'Urbanist', sans-serif;
+      font-size: 2rem; font-weight: 800;
+      letter-spacing: -0.04em; line-height: 1;
+    }
+    .stat .lbl { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat.green .val { color: var(--green); }
+    .stat.amber .val { color: var(--amber); }
+    .stat.red   .val { color: var(--red); }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .card-title {
+      font-size: 0.68rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted); margin-bottom: 1.1rem;
+    }
 
     /* Chart */
-    .chart-card {
-      background: #fff;
-      border: 1px solid #e8e7e2;
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1rem;
-    }
-    .chart-card h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; margin-bottom: 1rem; }
-    .chart-wrap { position: relative; height: 140px; }
+    .chart-wrap { position: relative; height: 160px; }
 
-    /* By mode */
-    .mode-card {
-      background: #fff;
-      border: 1px solid #e8e7e2;
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1rem;
-    }
-    .mode-card h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; margin-bottom: 1rem; }
-    .mode-row {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 0.6rem 0;
-      border-bottom: 1px solid #f0efe9;
-    }
-    .mode-row:last-child { border-bottom: none; }
-    .mode-icon { font-size: 1.1rem; width: 24px; text-align: center; }
-    .mode-name { width: 80px; font-size: 0.85rem; font-weight: 500; text-transform: capitalize; }
-    .mode-bar-wrap { flex: 1; height: 6px; background: #f0efe9; border-radius: 3px; overflow: hidden; }
-    .mode-bar { height: 100%; border-radius: 3px; background: #16a34a; transition: width 0.4s; }
-    .mode-pct { width: 36px; text-align: right; font-size: 0.82rem; font-weight: 600; color: #555; }
+    /* Mode bars */
+    .mode-list { display: flex; flex-direction: column; gap: 0.9rem; }
+    .mode-row  { display: flex; align-items: center; gap: 0.9rem; }
+    .mode-icon { font-size: 1rem; width: 22px; text-align: center; flex-shrink: 0; }
+    .mode-name { font-size: 0.85rem; font-weight: 500; width: 72px; flex-shrink: 0; }
+    .mode-bar-bg { flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+    .mode-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+    .mode-pct { font-size: 0.82rem; font-weight: 600; width: 38px; text-align: right; }
+    .mode-count { font-size: 0.72rem; color: var(--muted); width: 60px; text-align: right; }
 
-    .updated { font-size: 0.72rem; color: #bbb; text-align: center; margin-top: 1rem; }
-    .no-data  { text-align: center; padding: 3rem; color: #aaa; font-size: 0.9rem; }
+    /* Shame stats */
+    .shame-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .shame-item {
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.9rem 1rem;
+    }
+    .shame-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
+    .shame-value { font-family: 'Urbanist', sans-serif; font-size: 1.2rem; font-weight: 700; color: #fff; margin-top: 0.25rem; }
+    .shame-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
+
+    /* Footer */
+    .footer { text-align: center; margin-top: 2rem; font-size: 0.72rem; color: var(--muted); opacity: 0.4; }
+
+    /* No data */
+    .no-data { text-align: center; padding: 5rem 1rem; color: var(--muted); }
+    .no-data h2 { font-family: 'Urbanist', sans-serif; font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
+    .no-data p  { font-size: 0.85rem; line-height: 1.7; }
+
+    @media (max-width: 500px) {
+      .hero-score { flex-direction: column; gap: 0.75rem; }
+      .big-num { font-size: 4rem; }
+      .stat-grid { grid-template-columns: repeat(3, 1fr); }
+      .shame-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-<div class="wrap">
+<div class="page">
 
-  <header>
-    <h1>Oslo Transit — On Time? 🚆</h1>
-    <p>Real stats collected from Ruter & Vy every 15 minutes via Entur</p>
-  </header>
+  <div class="header">
+    <div>
+      <h1>Oslo Transit — <span>On Time?</span></h1>
+      <p>Sampled from 5 major hubs via Entur · Updated every 15 min</p>
+    </div>
+    <div class="live-badge"><div class="dot"></div> Live</div>
+  </div>
 
-  <div id="app"><div class="no-data">Loading stats…</div></div>
+  <div id="app"><div class="no-data"><h2>Collecting data…</h2><p>First samples are being gathered.<br>Check back in a few minutes.</p></div></div>
 
 </div>
 
 <script>
 const MODES = {
-  rail:    { label: 'Train', icon: '🚆' },
+  rail:    { label: 'Train',  icon: '🚆' },
   metro:   { label: 'T-bane', icon: '🚇' },
-  tram:    { label: 'Tram', icon: '🚊' },
-  bus:     { label: 'Bus', icon: '🚌' },
-  water:   { label: 'Ferry', icon: '⛴️' },
-  unknown: { label: 'Other', icon: '🚐' },
+  tram:    { label: 'Tram',   icon: '🚊' },
+  bus:     { label: 'Bus',    icon: '🚌' },
+  water:   { label: 'Ferry',  icon: '⛴️' },
+  unknown: { label: 'Other',  icon: '🚐' },
 };
+const VERDICTS = [
+  [90, 'Running smooth 🟢',   'good'],
+  [78, 'Mostly on time',       'ok'],
+  [65, 'Some delays today',    'ok'],
+  [50, 'Pretty rough out there 🔴', 'bad'],
+  [0,  'Total chaos 🚨',       'bad'],
+];
 
 function pct(v, t) { return t > 0 ? Math.round(v / t * 100) : 0; }
 
-function verdict(p) {
-  if (p >= 90) return { text: 'Remarkably on time', cls: 'good' };
-  if (p >= 75) return { text: 'Mostly on schedule', cls: 'ok' };
-  if (p >= 60) return { text: 'Some disruptions', cls: 'ok' };
-  return { text: 'Significant delays', cls: 'bad' };
-}
-
-function formatTime(ts) {
-  const d = new Date(ts * 1000);
-  return d.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
-}
-
 function barColor(p) {
-  if (p >= 85) return '#16a34a';
-  if (p >= 65) return '#d97706';
-  return '#dc2626';
+  if (p >= 80) return '#22c55e';
+  if (p >= 60) return '#f59e0b';
+  return '#ef4444';
+}
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDate(ts) {
+  return new Date(ts * 1000).toLocaleDateString('no-NO', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function hourOf(ts) {
+  return new Date(ts * 1000).getUTCHours();
 }
 
 function render(db) {
   const history = db.history || [];
-  if (!history.length) {
-    document.getElementById('app').innerHTML =
-      '<div class="no-data">No data yet — check back in a few minutes.<br>The collector runs every 15 min.</div>';
-    return;
-  }
+  if (history.length < 1) return;
 
-  // Last 24h data
-  const since24h = Date.now() / 1000 - 86400;
-  const recent = history.filter(h => h.t >= since24h);
-  const last = history[history.length - 1];
+  const now24  = Date.now() / 1000 - 86400;
+  const now48  = Date.now() / 1000 - 172800;
+  const last   = history[history.length - 1];
+  const recent = history.filter(h => h.t >= now24);
+  const chart  = history.filter(h => h.t >= now48);
 
-  // Overall 24h totals
-  const totals = recent.reduce((a, h) => {
-    a.total += h.total; a.onTime += h.onTime;
-    a.delayed += h.delayed; a.cancelled += h.cancelled;
+  // 24h totals
+  const t24 = recent.reduce((a,h) => {
+    a.total+=h.total; a.onTime+=h.onTime; a.delayed+=h.delayed; a.cancelled+=h.cancelled;
     return a;
-  }, { total: 0, onTime: 0, delayed: 0, cancelled: 0 });
+  }, {total:0,onTime:0,delayed:0,cancelled:0});
 
-  const latestPct = pct(last.onTime, last.total);
-  const avgPct24  = pct(totals.onTime, totals.total);
-  const v = verdict(avgPct24);
+  const avg24 = pct(t24.onTime, t24.total);
+  const nowPct = pct(last.onTime, last.total);
+  const [,verdict,cls] = VERDICTS.find(([thresh]) => avg24 >= thresh);
 
-  // Aggregate modes over 24h
-  const modeAgg = {};
+  // Mode aggregation 24h
+  const modes = {};
   for (const h of recent) {
-    for (const [mode, m] of Object.entries(h.modes || {})) {
-      if (!modeAgg[mode]) modeAgg[mode] = { total: 0, onTime: 0 };
-      modeAgg[mode].total  += m.total;
-      modeAgg[mode].onTime += m.onTime;
+    for (const [m, v] of Object.entries(h.modes || {})) {
+      if (!modes[m]) modes[m] = {total:0,onTime:0,delayed:0};
+      modes[m].total   += v.total;
+      modes[m].onTime  += v.onTime;
+      modes[m].delayed += (v.delayed||0);
     }
   }
+  const modesSorted = Object.entries(modes)
+    .filter(([,v]) => v.total > 5)
+    .sort((a,b) => b[1].total - a[1].total);
 
-  // Sparkline — last 48h, bucket by hour
-  const since48h = Date.now() / 1000 - 172800;
-  const chartData = history.filter(h => h.t >= since48h);
+  // Shame stats
+  // Worst hour (by avg pct in last 24h)
+  const byHour = {};
+  for (const h of recent) {
+    const hr = hourOf(h.t);
+    if (!byHour[hr]) byHour[hr] = {on:0,tot:0};
+    byHour[hr].on  += h.onTime;
+    byHour[hr].tot += h.total;
+  }
+  const hourEntries = Object.entries(byHour).filter(([,v]) => v.tot > 0);
+  const worstHour  = hourEntries.sort((a,b) => pct(a[1].on,a[1].tot) - pct(b[1].on,b[1].tot))[0];
+  const bestHour   = hourEntries.sort((a,b) => pct(b[1].on,b[1].tot) - pct(a[1].on,a[1].tot))[0];
+
+  // Worst mode
+  const worstMode = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(a[1].onTime,a[1].total) - pct(b[1].onTime,b[1].total))[0] : null;
+  const bestMode  = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(b[1].onTime,b[1].total) - pct(a[1].onTime,a[1].total))[0] : null;
+
+  // Worst single sample
+  const worstSample = [...recent].sort((a,b) => pct(a.onTime,a.total) - pct(b.onTime,b.total))[0];
+
+  // Samples collected today
+  const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
+  const todaySamples = history.filter(h => h.t >= todayStart.getTime()/1000).length;
 
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="score-card">
-      <div class="score-pct ${v.cls}">${avgPct24}%</div>
+
+    <div class="hero-score">
+      <div class="big-num ${cls}">${avg24}%</div>
       <div class="score-meta">
-        <div class="verdict">${v.text}</div>
-        <div class="detail">
-          24h average · ${totals.total.toLocaleString()} departures sampled<br>
-          ${totals.delayed} delayed · ${totals.cancelled} cancelled
+        <div class="verdict">${verdict}</div>
+        <div class="score-desc">
+          <strong>${t24.total.toLocaleString()}</strong> departures sampled over 24h<br>
+          <strong>${t24.delayed}</strong> delayed · <strong>${t24.cancelled}</strong> cancelled · <strong>${t24.onTime}</strong> on time
         </div>
       </div>
     </div>
 
-    <div class="stat-row">
-      <div class="stat-box green">
-        <div class="val">${pct(last.onTime, last.total)}%</div>
+    <div class="stat-grid">
+      <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
+        <div class="val">${nowPct}%</div>
         <div class="lbl">Right now</div>
       </div>
-      <div class="stat-box amber">
+      <div class="stat amber">
         <div class="val">${last.delayed}</div>
-        <div class="lbl">Delayed now</div>
+        <div class="lbl">Delayed</div>
       </div>
-      <div class="stat-box red">
+      <div class="stat red">
         <div class="val">${last.cancelled}</div>
-        <div class="lbl">Cancelled now</div>
+        <div class="lbl">Cancelled</div>
       </div>
     </div>
 
-    <div class="chart-card">
-      <h2>Punctuality — last 48 hours</h2>
+    <div class="card">
+      <div class="card-title">Punctuality — last 48 hours</div>
       <div class="chart-wrap"><canvas id="chart"></canvas></div>
     </div>
 
-    <div class="mode-card">
-      <h2>By mode — 24h average</h2>
-      ${Object.entries(modeAgg)
-        .filter(([, m]) => m.total > 0)
-        .sort((a, b) => b[1].total - a[1].total)
-        .map(([mode, m]) => {
+    <div class="card">
+      <div class="card-title">By mode — 24h average</div>
+      <div class="mode-list">
+        ${modesSorted.map(([mode, m]) => {
           const p = pct(m.onTime, m.total);
           const info = MODES[mode] || MODES.unknown;
           return `<div class="mode-row">
             <span class="mode-icon">${info.icon}</span>
             <span class="mode-name">${info.label}</span>
-            <div class="mode-bar-wrap">
-              <div class="mode-bar" style="width:${p}%;background:${barColor(p)}"></div>
+            <div class="mode-bar-bg">
+              <div class="mode-bar-fill" style="width:${p}%;background:${barColor(p)}"></div>
             </div>
-            <span class="mode-pct">${p}%</span>
+            <span class="mode-pct" style="color:${barColor(p)}">${p}%</span>
+            <span class="mode-count">${m.total.toLocaleString()} trips</span>
           </div>`;
-        }).join('')}
+        }).join('') || '<div style="color:var(--muted);font-size:0.85rem">Need more data…</div>'}
+      </div>
     </div>
 
-    <p class="updated">Updated: ${new Date(db.updated).toLocaleString('no-NO')} · ${history.length} samples stored</p>
+    <div class="card">
+      <div class="card-title">Stats & Shame Board</div>
+      <div class="shame-grid">
+        ${worstHour ? `
+        <div class="shame-item">
+          <div class="shame-label">Worst Hour Today</div>
+          <div class="shame-value">${worstHour[0].padStart(2,'0')}:00 — ${pct(worstHour[1].on,worstHour[1].tot)}%</div>
+          <div class="shame-sub">on time during that hour</div>
+        </div>` : ''}
+        ${bestHour ? `
+        <div class="shame-item">
+          <div class="shame-label">Best Hour Today</div>
+          <div class="shame-value">${bestHour[0].padStart(2,'0')}:00 — ${pct(bestHour[1].on,bestHour[1].tot)}%</div>
+          <div class="shame-sub">on time during that hour</div>
+        </div>` : ''}
+        ${worstMode ? `
+        <div class="shame-item">
+          <div class="shame-label">Worst Mode</div>
+          <div class="shame-value">${(MODES[worstMode[0]]||MODES.unknown).icon} ${(MODES[worstMode[0]]||MODES.unknown).label}</div>
+          <div class="shame-sub">${pct(worstMode[1].onTime,worstMode[1].total)}% on time — needs improvement</div>
+        </div>` : ''}
+        ${bestMode ? `
+        <div class="shame-item">
+          <div class="shame-label">Most Reliable</div>
+          <div class="shame-value">${(MODES[bestMode[0]]||MODES.unknown).icon} ${(MODES[bestMode[0]]||MODES.unknown).label}</div>
+          <div class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% on time — 👏</div>
+        </div>` : ''}
+        ${worstSample ? `
+        <div class="shame-item">
+          <div class="shame-label">Worst Sample (24h)</div>
+          <div class="shame-value">${pct(worstSample.onTime,worstSample.total)}% @ ${fmtTime(worstSample.t)}</div>
+          <div class="shame-sub">${worstSample.delayed} delayed, ${worstSample.cancelled} cancelled</div>
+        </div>` : ''}
+        <div class="shame-item">
+          <div class="shame-label">Data Points Today</div>
+          <div class="shame-value">${todaySamples} samples</div>
+          <div class="shame-sub">of ~${Math.round(86400/900)} possible (15 min interval)</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="footer">Last updated: ${new Date(db.updated).toLocaleString('no-NO')} · ${history.length} total samples stored · <a href="https://github.com/PiE-Derby/oslo-on-time" target="_blank" style="color:var(--muted);text-decoration:none">source</a></p>
   `;
 
   // Draw chart
-  const labels = chartData.map(h => formatTime(h.t));
-  const values = chartData.map(h => pct(h.onTime, h.total));
+  const labels  = chart.map(h => fmtTime(h.t));
+  const values  = chart.map(h => pct(h.onTime, h.total));
   new Chart(document.getElementById('chart'), {
     type: 'line',
     data: {
       labels,
       datasets: [{
         data: values,
-        borderColor: '#16a34a',
-        backgroundColor: 'rgba(22,163,74,0.08)',
+        borderColor: '#0cb6eb',
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 160);
+          g.addColorStop(0, 'rgba(12,182,235,0.15)');
+          g.addColorStop(1, 'rgba(12,182,235,0)');
+          return g;
+        },
         borderWidth: 1.5,
         fill: true,
-        tension: 0.3,
+        tension: 0.4,
         pointRadius: 0,
         pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#0cb6eb',
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: {
-        callbacks: { label: ctx => `${ctx.parsed.y}% on time` }
-      }},
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1d25',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          titleColor: '#a0aab8',
+          bodyColor: '#fff',
+          padding: 10,
+          callbacks: { label: ctx => `${ctx.parsed.y}% on time` }
+        }
+      },
       scales: {
-        x: { ticks: { maxTicksLimit: 8, font: { size: 11 }, color: '#bbb' }, grid: { display: false } },
-        y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { size: 11 }, color: '#bbb' }, grid: { color: '#f0efe9' } }
+        x: { ticks: { maxTicksLimit: 7, font:{size:10}, color:'#4b5563' }, grid: { display: false }, border: { display: false } },
+        y: { min: 0, max: 100,
+             ticks: { callback: v => v+'%', font:{size:10}, color:'#4b5563', maxTicksLimit: 5 },
+             grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } }
       }
     }
   });
 }
 
-fetch('data/stats.json?t=' + Date.now())
-  .then(r => r.json())
-  .then(render)
-  .catch(() => {
+async function load() {
+  try {
+    const r = await fetch('data/stats.json?t=' + Date.now());
+    const db = await r.json();
+    if ((db.history||[]).length > 0) render(db);
+    else document.getElementById('app').innerHTML =
+      '<div class="no-data"><h2>Warming up…</h2><p>First samples are being gathered.<br>Cron runs every 15 min — check back shortly.</p></div>';
+  } catch(e) {
     document.getElementById('app').innerHTML =
-      '<div class="no-data">Could not load stats.<br>The collector may not have run yet.</div>';
-  });
+      '<div class="no-data"><h2>Can\'t load stats</h2><p>'+e.message+'</p></div>';
+  }
+}
+
+load();
+setInterval(load, 60000); // refresh every 60s
 </script>
 </body>
 </html>
