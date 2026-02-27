@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Fetches current departures from Oslo transit hubs and records punctuality stats.
-// Appends one data point to data/stats.json, keeps last 1000 samples (~10 days at 15 min intervals).
+// Fetches current departures from Oslo transit hubs, records punctuality stats,
+// and updates data/stats.json in the GitHub repo via the Contents API.
 
-const https = require('https');
-const fs    = require('fs');
-const path  = require('path');
+const https  = require('https');
+const REPO   = 'PiE-Derby/oslo-on-time';
+const GH_TOKEN = process.env.GH_TOKEN;
 
 const STOPS = [
   'NSR:StopPlace:59872',  // Oslo S
@@ -14,45 +14,66 @@ const STOPS = [
   'NSR:StopPlace:58243',  // Jernbanetorget
 ];
 
-const QUERY = (stopId) => JSON.stringify({ query: `{
-  stopPlace(id: "${stopId}") {
-    name
-    estimatedCalls(timeRange: 600, numberOfDepartures: 40) {
-      realtime
-      cancellation
-      aimedDepartureTime
-      expectedDepartureTime
-      serviceJourney {
-        journeyPattern { line { publicCode transportMode } }
-      }
-    }
-  }
-}` });
-
-function post(body) {
+function request(options, body) {
   return new Promise((resolve, reject) => {
-    const data = Buffer.from(body);
-    const req = https.request({
-      hostname: 'api.entur.io',
-      path: '/journey-planner/v3/graphql',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': data.length,
-        'ET-Client-Name': 'pie-derby-oslostat',
-      }
-    }, res => {
+    const data = body ? Buffer.from(body) : null;
+    if (data) options.headers['Content-Length'] = data.length;
+    const req = https.request(options, res => {
       let buf = '';
       res.on('data', d => buf += d);
-      res.on('end', () => {
-        try { resolve(JSON.parse(buf)); }
-        catch(e) { reject(e); }
-      });
+      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(buf) }); } catch(e) { reject(e); } });
     });
     req.on('error', reject);
-    req.write(data);
+    if (data) req.write(data);
     req.end();
   });
+}
+
+function enturQuery(stopId) {
+  return JSON.stringify({ query: `{
+    stopPlace(id: "${stopId}") {
+      estimatedCalls(timeRange: 600, numberOfDepartures: 40) {
+        realtime cancellation aimedDepartureTime expectedDepartureTime
+        serviceJourney { journeyPattern { line { transportMode } } }
+      }
+    }
+  }` });
+}
+
+async function fetchStop(stopId) {
+  const r = await request({
+    hostname: 'api.entur.io', path: '/journey-planner/v3/graphql', method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': 'pie-derby-oslostat' }
+  }, enturQuery(stopId));
+  return r.body?.data?.stopPlace?.estimatedCalls ?? [];
+}
+
+async function getStats() {
+  const r = await request({
+    hostname: 'api.github.com',
+    path: `/repos/${REPO}/contents/data/stats.json`,
+    method: 'GET',
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, 'User-Agent': 'pie-derby', Accept: 'application/vnd.github+json' }
+  });
+  if (r.status !== 200) return { sha: null, db: { updated: null, history: [] } };
+  const content = Buffer.from(r.body.content, 'base64').toString('utf8');
+  return { sha: r.body.sha, db: JSON.parse(content) };
+}
+
+async function putStats(db, sha) {
+  const content = Buffer.from(JSON.stringify(db)).toString('base64');
+  const body = JSON.stringify({
+    message: `stats: ${new Date().toUTCString()}`,
+    content,
+    ...(sha ? { sha } : {})
+  });
+  const r = await request({
+    hostname: 'api.github.com',
+    path: `/repos/${REPO}/contents/data/stats.json`,
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, 'User-Agent': 'pie-derby', Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }
+  }, body);
+  return r.status === 200 || r.status === 201;
 }
 
 async function main() {
@@ -61,61 +82,38 @@ async function main() {
 
   for (const stopId of STOPS) {
     try {
-      const res = await post(QUERY(stopId));
-      const calls = res?.data?.stopPlace?.estimatedCalls ?? [];
+      const calls = await fetchStop(stopId);
       for (const c of calls) {
-        if (!c.realtime) continue; // skip non-realtime entries
+        if (!c.realtime) continue;
         total++;
         const mode = c.serviceJourney?.journeyPattern?.line?.transportMode ?? 'unknown';
         if (!byMode[mode]) byMode[mode] = { total: 0, onTime: 0, delayed: 0, cancelled: 0 };
         byMode[mode].total++;
-
         if (c.cancellation) {
-          cancelled++;
-          byMode[mode].cancelled++;
+          cancelled++; byMode[mode].cancelled++;
         } else if (c.aimedDepartureTime !== c.expectedDepartureTime) {
-          const diffMs = new Date(c.expectedDepartureTime) - new Date(c.aimedDepartureTime);
-          const diffMin = Math.round(diffMs / 60000);
-          if (diffMin > 1) { // >1 min late counts as delayed
-            delayed++;
-            byMode[mode].delayed++;
-          } else {
-            onTime++;
-            byMode[mode].onTime++;
-          }
+          const diff = Math.round((new Date(c.expectedDepartureTime) - new Date(c.aimedDepartureTime)) / 60000);
+          if (diff > 1) { delayed++; byMode[mode].delayed++; }
+          else          { onTime++;  byMode[mode].onTime++; }
         } else {
-          onTime++;
-          byMode[mode].onTime++;
+          onTime++; byMode[mode].onTime++;
         }
       }
-    } catch(e) {
-      console.error(`Failed ${stopId}:`, e.message);
-    }
+    } catch(e) { console.error(`Failed ${stopId}:`, e.message); }
   }
 
-  if (total === 0) {
-    console.log('No realtime data available, skipping write.');
-    process.exit(0);
-  }
+  if (total === 0) { console.log('No realtime data, skipping.'); return; }
 
-  const point = {
-    t: Math.floor(Date.now() / 1000),
-    total, onTime, delayed, cancelled,
-    modes: byMode,
-  };
+  const point = { t: Math.floor(Date.now() / 1000), total, onTime, delayed, cancelled, modes: byMode };
 
-  const statsPath = path.join(__dirname, 'data', 'stats.json');
-  let db = { updated: null, history: [] };
-  try { db = JSON.parse(fs.readFileSync(statsPath, 'utf8')); } catch {}
-
+  const { sha, db } = await getStats();
   db.history.push(point);
   if (db.history.length > 1000) db.history = db.history.slice(-1000);
   db.updated = new Date().toISOString();
 
-  fs.writeFileSync(statsPath, JSON.stringify(db));
-
-  const pct = total > 0 ? Math.round(onTime / total * 100) : 0;
-  console.log(`✓ ${new Date().toISOString()} — ${pct}% on time (${onTime}/${total}, ${delayed} delayed, ${cancelled} cancelled)`);
+  const ok = await putStats(db, sha);
+  const pct = Math.round(onTime / total * 100);
+  console.log(`${ok ? '✓' : '✗'} ${new Date().toISOString()} — ${pct}% on time (${onTime}/${total}, ${delayed} delayed, ${cancelled} cancelled)`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
