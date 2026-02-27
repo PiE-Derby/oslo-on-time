@@ -46,7 +46,7 @@
     /* ── HEADER ── */
     .header {
       display: flex; align-items: flex-start; justify-content: space-between;
-      gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;
+      gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap;
     }
     .header h1 {
       font-family: 'Urbanist', sans-serif;
@@ -72,6 +72,30 @@
     .live-badge .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; transition: background 0.2s; }
     .live-badge.paused .dot { background: var(--muted); animation: none; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── FILTER BUTTONS ── */
+    .filters {
+      display: flex; gap: 0.4rem; flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .filter-btn {
+      display: flex; align-items: center; gap: 0.35rem;
+      font-size: 0.78rem; font-weight: 500;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .filter-btn:hover { border-color: rgba(12,182,235,0.3); color: var(--text); }
+    .filter-btn.active {
+      background: rgba(12,182,235,0.12);
+      border-color: rgba(12,182,235,0.4);
+      color: var(--cyan);
+    }
 
     /* ── HERO SCORE ── */
     .hero-score {
@@ -200,11 +224,30 @@
     </div>
   </div>
 
+  <div class="filters" id="filters">
+    <button class="filter-btn active" data-mode="all" onclick="setFilter('all')">🚦 All</button>
+    <button class="filter-btn" data-mode="rail"  onclick="setFilter('rail')">🚆 Train</button>
+    <button class="filter-btn" data-mode="metro" onclick="setFilter('metro')">🚇 T-bane</button>
+    <button class="filter-btn" data-mode="tram"  onclick="setFilter('tram')">🚊 Tram</button>
+    <button class="filter-btn" data-mode="bus"   onclick="setFilter('bus')">🚌 Bus</button>
+  </div>
+
   <div id="app"><div class="no-data"><h2>Collecting data…</h2><p>First samples are being gathered.<br>Check back in a few minutes.</p></div></div>
 
 </div>
 
 <script>
+let activeFilter = 'all';
+let lastDb = null;
+
+function setFilter(mode) {
+  activeFilter = mode;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  if (lastDb) render(lastDb);
+}
+
 const MODES = {
   rail:    { label: 'Train',  icon: '🚆' },
   metro:   { label: 'T-bane', icon: '🚇' },
@@ -241,24 +284,39 @@ function hourOf(ts) {
   return new Date(ts * 1000).getUTCHours();
 }
 
+function modeSlice(h, mode) {
+  // Extract stats for a specific mode from a history point (or use totals if 'all')
+  if (mode === 'all') return { total: h.total, onTime: h.onTime, delayed: h.delayed, cancelled: h.cancelled };
+  const m = (h.modes || {})[mode];
+  if (!m) return null;
+  return { total: m.total, onTime: m.onTime, delayed: m.delayed || 0, cancelled: m.cancelled || 0 };
+}
+
 function render(db) {
+  lastDb = db;
   const history = db.history || [];
   if (history.length < 1) return;
 
-  const now24  = Date.now() / 1000 - 86400;
-  const now48  = Date.now() / 1000 - 172800;
+  const mode  = activeFilter;
+  const now24 = Date.now() / 1000 - 86400;
+  const now48 = Date.now() / 1000 - 172800;
   const last   = history[history.length - 1];
   const recent = history.filter(h => h.t >= now24);
   const chart  = history.filter(h => h.t >= now48);
 
-  // 24h totals
+  // Filtered "last" snapshot
+  const lastSlice = modeSlice(last, mode) || { total: 0, onTime: 0, delayed: 0, cancelled: 0 };
+
+  // 24h totals — filtered by mode
   const t24 = recent.reduce((a,h) => {
-    a.total+=h.total; a.onTime+=h.onTime; a.delayed+=h.delayed; a.cancelled+=h.cancelled;
+    const s = modeSlice(h, mode);
+    if (!s) return a;
+    a.total+=s.total; a.onTime+=s.onTime; a.delayed+=s.delayed; a.cancelled+=s.cancelled;
     return a;
   }, {total:0,onTime:0,delayed:0,cancelled:0});
 
-  const avg24 = pct(t24.onTime, t24.total);
-  const nowPct = pct(last.onTime, last.total);
+  const avg24  = pct(t24.onTime, t24.total);
+  const nowPct = pct(lastSlice.onTime, lastSlice.total);
   const [,verdict,cls] = VERDICTS.find(([thresh]) => avg24 >= thresh);
 
   // Mode aggregation 24h
@@ -275,14 +333,15 @@ function render(db) {
     .filter(([,v]) => v.total > 5)
     .sort((a,b) => b[1].total - a[1].total);
 
-  // Shame stats
-  // Worst hour (by avg pct in last 24h)
+  // Shame stats — filtered by mode
   const byHour = {};
   for (const h of recent) {
+    const s = modeSlice(h, mode);
+    if (!s || s.total === 0) continue;
     const hr = hourOf(h.t);
     if (!byHour[hr]) byHour[hr] = {on:0,tot:0};
-    byHour[hr].on  += h.onTime;
-    byHour[hr].tot += h.total;
+    byHour[hr].on  += s.onTime;
+    byHour[hr].tot += s.total;
   }
   const hourEntries = Object.entries(byHour).filter(([,v]) => v.tot > 0);
   const worstHour  = hourEntries.sort((a,b) => pct(a[1].on,a[1].tot) - pct(b[1].on,b[1].tot))[0];
@@ -292,8 +351,14 @@ function render(db) {
   const worstMode = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(a[1].onTime,a[1].total) - pct(b[1].onTime,b[1].total))[0] : null;
   const bestMode  = modesSorted.length ? modesSorted.slice().sort((a,b) => pct(b[1].onTime,b[1].total) - pct(a[1].onTime,a[1].total))[0] : null;
 
-  // Worst single sample
-  const worstSample = [...recent].sort((a,b) => pct(a.onTime,a.total) - pct(b.onTime,b.total))[0];
+  // Worst single sample — filtered by mode
+  const worstSample = [...recent]
+    .filter(h => { const s = modeSlice(h, mode); return s && s.total > 0; })
+    .sort((a,b) => {
+      const sa = modeSlice(a, mode), sb = modeSlice(b, mode);
+      return pct(sa.onTime,sa.total) - pct(sb.onTime,sb.total);
+    })[0];
+  const worstSlice = worstSample ? modeSlice(worstSample, mode) : null;
 
   // Samples collected today
   const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
@@ -307,7 +372,7 @@ function render(db) {
       <div class="score-meta">
         <div class="verdict">${verdict}</div>
         <div class="score-desc">
-          <strong>${t24.total.toLocaleString()}</strong> departures sampled over 24h<br>
+          ${mode !== 'all' ? `<strong>${(MODES[mode]||MODES.unknown).icon} ${(MODES[mode]||MODES.unknown).label} only</strong> · ` : ''}<strong>${t24.total.toLocaleString()}</strong> departures over 24h<br>
           <strong>${t24.delayed}</strong> delayed · <strong>${t24.cancelled}</strong> cancelled · <strong>${t24.onTime}</strong> on time
         </div>
       </div>
@@ -317,17 +382,17 @@ function render(db) {
       <div class="stat ${nowPct>=80?'green':nowPct>=65?'amber':'red'}">
         <div class="val">${nowPct}%</div>
         <div class="lbl">On time now</div>
-        <div class="sub">${last.onTime} of ${last.total}</div>
+        <div class="sub">${lastSlice.onTime} of ${lastSlice.total}</div>
       </div>
       <div class="stat amber">
-        <div class="val">${pct(last.delayed, last.total)}%</div>
+        <div class="val">${pct(lastSlice.delayed, lastSlice.total)}%</div>
         <div class="lbl">Delayed now</div>
-        <div class="sub">${last.delayed} of ${last.total}</div>
+        <div class="sub">${lastSlice.delayed} of ${lastSlice.total}</div>
       </div>
       <div class="stat red">
-        <div class="val">${last.cancelled > 0 ? pct(last.cancelled, last.total)+'%' : '0%'}</div>
+        <div class="val">${lastSlice.cancelled > 0 ? pct(lastSlice.cancelled, lastSlice.total)+'%' : '0%'}</div>
         <div class="lbl">Cancelled</div>
-        <div class="sub">${last.cancelled} of ${last.total}</div>
+        <div class="sub">${lastSlice.cancelled} of ${lastSlice.total}</div>
       </div>
     </div>
 
@@ -382,11 +447,11 @@ function render(db) {
           <div class="shame-value">${(MODES[bestMode[0]]||MODES.unknown).icon} ${(MODES[bestMode[0]]||MODES.unknown).label}</div>
           <div class="shame-sub">${pct(bestMode[1].onTime,bestMode[1].total)}% on time — 👏</div>
         </div>` : ''}
-        ${worstSample ? `
+        ${worstSample && worstSlice ? `
         <div class="shame-item">
           <div class="shame-label">Worst Sample (24h)</div>
-          <div class="shame-value">${pct(worstSample.onTime,worstSample.total)}% @ ${fmtTime(worstSample.t)}</div>
-          <div class="shame-sub">${worstSample.delayed} delayed, ${worstSample.cancelled} cancelled</div>
+          <div class="shame-value">${pct(worstSlice.onTime,worstSlice.total)}% @ ${fmtTime(worstSample.t)}</div>
+          <div class="shame-sub">${worstSlice.delayed} delayed, ${worstSlice.cancelled} cancelled</div>
         </div>` : ''}
         <div class="shame-item">
           <div class="shame-label">Data Points Today</div>
@@ -399,9 +464,10 @@ function render(db) {
     <p class="footer">Last updated: ${new Date(db.updated).toLocaleString('no-NO')} · ${history.length} total samples stored · <a href="https://github.com/PiE-Derby/oslo-on-time" target="_blank" style="color:var(--muted);text-decoration:none">source</a></p>
   `;
 
-  // Draw chart
-  const labels  = chart.map(h => fmtTime(h.t));
-  const values  = chart.map(h => pct(h.onTime, h.total));
+  // Draw chart — filtered by mode
+  const chartPoints = chart.map(h => ({ t: h.t, s: modeSlice(h, mode) })).filter(p => p.s && p.s.total > 0);
+  const labels = chartPoints.map(p => fmtTime(p.t));
+  const values = chartPoints.map(p => pct(p.s.onTime, p.s.total));
   new Chart(document.getElementById('chart'), {
     type: 'line',
     data: {
