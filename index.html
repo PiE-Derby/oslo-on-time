@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oslo Transit — On Time?</title>
+  <meta name="description" content="Is Oslo public transport running on schedule? Live stats updated every 15 minutes.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #f5f4f0;
+      color: #111;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; }
+
+    header { margin-bottom: 2rem; }
+    header h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; }
+    header p  { font-size: 0.85rem; color: #888; margin-top: 0.25rem; }
+
+    /* Big score */
+    .score-card {
+      background: #fff;
+      border: 1px solid #e8e7e2;
+      border-radius: 12px;
+      padding: 2rem 1.5rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    .score-pct {
+      font-size: 4rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+    .score-pct.good    { color: #16a34a; }
+    .score-pct.ok      { color: #d97706; }
+    .score-pct.bad     { color: #dc2626; }
+    .score-meta { flex: 1; }
+    .score-meta .verdict {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+    .score-meta .detail { font-size: 0.8rem; color: #888; line-height: 1.6; }
+
+    /* Stat row */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .stat-box {
+      background: #fff;
+      border: 1px solid #e8e7e2;
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-box .val { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+    .stat-box .lbl { font-size: 0.72rem; color: #999; margin-top: 0.2rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat-box.green .val { color: #16a34a; }
+    .stat-box.amber .val { color: #d97706; }
+    .stat-box.red   .val { color: #dc2626; }
+
+    /* Chart */
+    .chart-card {
+      background: #fff;
+      border: 1px solid #e8e7e2;
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .chart-card h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; margin-bottom: 1rem; }
+    .chart-wrap { position: relative; height: 140px; }
+
+    /* By mode */
+    .mode-card {
+      background: #fff;
+      border: 1px solid #e8e7e2;
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .mode-card h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; margin-bottom: 1rem; }
+    .mode-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #f0efe9;
+    }
+    .mode-row:last-child { border-bottom: none; }
+    .mode-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+    .mode-name { width: 80px; font-size: 0.85rem; font-weight: 500; text-transform: capitalize; }
+    .mode-bar-wrap { flex: 1; height: 6px; background: #f0efe9; border-radius: 3px; overflow: hidden; }
+    .mode-bar { height: 100%; border-radius: 3px; background: #16a34a; transition: width 0.4s; }
+    .mode-pct { width: 36px; text-align: right; font-size: 0.82rem; font-weight: 600; color: #555; }
+
+    .updated { font-size: 0.72rem; color: #bbb; text-align: center; margin-top: 1rem; }
+    .no-data  { text-align: center; padding: 3rem; color: #aaa; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Oslo Transit — On Time? 🚆</h1>
+    <p>Real stats collected from Ruter & Vy every 15 minutes via Entur</p>
+  </header>
+
+  <div id="app"><div class="no-data">Loading stats…</div></div>
+
+</div>
+
+<script>
+const MODES = {
+  rail:    { label: 'Train', icon: '🚆' },
+  metro:   { label: 'T-bane', icon: '🚇' },
+  tram:    { label: 'Tram', icon: '🚊' },
+  bus:     { label: 'Bus', icon: '🚌' },
+  water:   { label: 'Ferry', icon: '⛴️' },
+  unknown: { label: 'Other', icon: '🚐' },
+};
+
+function pct(v, t) { return t > 0 ? Math.round(v / t * 100) : 0; }
+
+function verdict(p) {
+  if (p >= 90) return { text: 'Remarkably on time', cls: 'good' };
+  if (p >= 75) return { text: 'Mostly on schedule', cls: 'ok' };
+  if (p >= 60) return { text: 'Some disruptions', cls: 'ok' };
+  return { text: 'Significant delays', cls: 'bad' };
+}
+
+function formatTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' });
+}
+
+function barColor(p) {
+  if (p >= 85) return '#16a34a';
+  if (p >= 65) return '#d97706';
+  return '#dc2626';
+}
+
+function render(db) {
+  const history = db.history || [];
+  if (!history.length) {
+    document.getElementById('app').innerHTML =
+      '<div class="no-data">No data yet — check back in a few minutes.<br>The collector runs every 15 min.</div>';
+    return;
+  }
+
+  // Last 24h data
+  const since24h = Date.now() / 1000 - 86400;
+  const recent = history.filter(h => h.t >= since24h);
+  const last = history[history.length - 1];
+
+  // Overall 24h totals
+  const totals = recent.reduce((a, h) => {
+    a.total += h.total; a.onTime += h.onTime;
+    a.delayed += h.delayed; a.cancelled += h.cancelled;
+    return a;
+  }, { total: 0, onTime: 0, delayed: 0, cancelled: 0 });
+
+  const latestPct = pct(last.onTime, last.total);
+  const avgPct24  = pct(totals.onTime, totals.total);
+  const v = verdict(avgPct24);
+
+  // Aggregate modes over 24h
+  const modeAgg = {};
+  for (const h of recent) {
+    for (const [mode, m] of Object.entries(h.modes || {})) {
+      if (!modeAgg[mode]) modeAgg[mode] = { total: 0, onTime: 0 };
+      modeAgg[mode].total  += m.total;
+      modeAgg[mode].onTime += m.onTime;
+    }
+  }
+
+  // Sparkline — last 48h, bucket by hour
+  const since48h = Date.now() / 1000 - 172800;
+  const chartData = history.filter(h => h.t >= since48h);
+
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="score-card">
+      <div class="score-pct ${v.cls}">${avgPct24}%</div>
+      <div class="score-meta">
+        <div class="verdict">${v.text}</div>
+        <div class="detail">
+          24h average · ${totals.total.toLocaleString()} departures sampled<br>
+          ${totals.delayed} delayed · ${totals.cancelled} cancelled
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box green">
+        <div class="val">${pct(last.onTime, last.total)}%</div>
+        <div class="lbl">Right now</div>
+      </div>
+      <div class="stat-box amber">
+        <div class="val">${last.delayed}</div>
+        <div class="lbl">Delayed now</div>
+      </div>
+      <div class="stat-box red">
+        <div class="val">${last.cancelled}</div>
+        <div class="lbl">Cancelled now</div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h2>Punctuality — last 48 hours</h2>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </div>
+
+    <div class="mode-card">
+      <h2>By mode — 24h average</h2>
+      ${Object.entries(modeAgg)
+        .filter(([, m]) => m.total > 0)
+        .sort((a, b) => b[1].total - a[1].total)
+        .map(([mode, m]) => {
+          const p = pct(m.onTime, m.total);
+          const info = MODES[mode] || MODES.unknown;
+          return `<div class="mode-row">
+            <span class="mode-icon">${info.icon}</span>
+            <span class="mode-name">${info.label}</span>
+            <div class="mode-bar-wrap">
+              <div class="mode-bar" style="width:${p}%;background:${barColor(p)}"></div>
+            </div>
+            <span class="mode-pct">${p}%</span>
+          </div>`;
+        }).join('')}
+    </div>
+
+    <p class="updated">Updated: ${new Date(db.updated).toLocaleString('no-NO')} · ${history.length} samples stored</p>
+  `;
+
+  // Draw chart
+  const labels = chartData.map(h => formatTime(h.t));
+  const values = chartData.map(h => pct(h.onTime, h.total));
+  new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        borderColor: '#16a34a',
+        backgroundColor: 'rgba(22,163,74,0.08)',
+        borderWidth: 1.5,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => `${ctx.parsed.y}% on time` }
+      }},
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 11 }, color: '#bbb' }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { size: 11 }, color: '#bbb' }, grid: { color: '#f0efe9' } }
+      }
+    }
+  });
+}
+
+fetch('data/stats.json?t=' + Date.now())
+  .then(r => r.json())
+  .then(render)
+  .catch(() => {
+    document.getElementById('app').innerHTML =
+      '<div class="no-data">Could not load stats.<br>The collector may not have run yet.</div>';
+  });
+</script>
+</body>
+</html>
