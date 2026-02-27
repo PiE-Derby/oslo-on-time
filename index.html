@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oslo Transit — On Time?</title>
   <meta name="description" content="Is Oslo public transport running on schedule? Real stats updated every 15 minutes.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -48,13 +49,16 @@
       display: flex; align-items: flex-start; justify-content: space-between;
       gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap;
     }
-    .header h1 {
+    .logo { display: flex; align-items: center; gap: 0.85rem; }
+    .logo-mark { flex-shrink: 0; }
+    .logo-text h1 {
       font-family: 'Urbanist', sans-serif;
-      font-size: 1.5rem; font-weight: 800;
+      font-size: 1.3rem; font-weight: 800;
       letter-spacing: -0.03em; color: #fff;
+      line-height: 1.1;
     }
-    .header h1 span { color: var(--cyan); }
-    .header p { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+    .logo-text h1 span { color: var(--cyan); }
+    .logo-text p { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
     .live-badge {
       display: flex; align-items: center; gap: 0.4rem;
       font-size: 0.72rem; font-weight: 500; color: var(--green);
@@ -214,9 +218,28 @@
 <div class="page">
 
   <div class="header">
-    <div>
-      <h1>Oslo Transit — <span>On Time?</span></h1>
-      <p>Sampled from 5 major hubs via Entur · Updated every 15 min</p>
+    <div class="logo">
+      <svg class="logo-mark" width="48" height="48" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <rect width="64" height="64" rx="14" fill="#1a1d25"/>
+        <rect x="8" y="22" width="48" height="22" rx="6" fill="#0cb6eb"/>
+        <path d="M44 22 Q56 22 56 30 L56 44 L44 44 Z" fill="#0997c5"/>
+        <rect x="13" y="27" width="9" height="8" rx="2" fill="#111318" opacity="0.8"/>
+        <rect x="27" y="27" width="9" height="8" rx="2" fill="#111318" opacity="0.8"/>
+        <rect x="41" y="27" width="9" height="8" rx="2.5" fill="#111318" opacity="0.6"/>
+        <circle cx="18" cy="47" r="5" fill="#111318" stroke="#0cb6eb" stroke-width="2"/>
+        <circle cx="18" cy="47" r="2" fill="#0cb6eb"/>
+        <circle cx="46" cy="47" r="5" fill="#111318" stroke="#0cb6eb" stroke-width="2"/>
+        <circle cx="46" cy="47" r="2" fill="#0cb6eb"/>
+        <rect x="4" y="52" width="56" height="2.5" rx="1.25" fill="#2a3040"/>
+        <circle cx="50" cy="14" r="11" fill="#111318" stroke="#22c55e" stroke-width="2"/>
+        <circle cx="50" cy="14" r="1.5" fill="#22c55e"/>
+        <line x1="50" y1="14" x2="50" y2="7"  stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+        <line x1="50" y1="14" x2="55" y2="14" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <div class="logo-text">
+        <h1>Oslo Transit — <span>On Time?</span></h1>
+        <p>Sampled from 5 major hubs via Entur · Updated every 15 min</p>
+      </div>
     </div>
     <div class="live-badge" id="refresh-badge" onclick="togglePause()" title="Click to pause/resume" style="cursor:pointer;user-select:none">
       <div class="dot" id="refresh-dot"></div>
