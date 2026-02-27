@@ -466,16 +466,21 @@ function buildAreaGrid(lastPoint) {
   const areas = {};
   for (const [id, info] of Object.entries(stops)) {
     if (!areas[info.area]) areas[info.area] = { total:0, onTime:0 };
-    const s = (lastPoint.stops||{})[id];
+    const raw = (lastPoint.stops||{})[id];
+    // When a mode filter is active, use per-stop mode breakdown if available
+    const s = (activeMode !== 'all' && raw?.modes) ? (raw.modes[activeMode] || null) : raw;
     if (s) { areas[info.area].total+=s.total; areas[info.area].onTime+=s.onTime; }
   }
 
   // Sort worst → best
   const sorted = Object.entries(areas)
     .map(([area,v]) => ({ area, p: pct(v.onTime,v.total), total: v.total }))
+    .filter(({total}) => total > 0)  // hide areas with no data for this mode
     .sort((a,b) => a.p - b.p);
 
-  const allPct = pct(lastPoint.onTime, lastPoint.total);
+  // "Hele Oslo" row respects mode filter too
+  const modeSlice = activeMode !== 'all' ? lastPoint.modes?.[activeMode] : null;
+  const allPct = modeSlice ? pct(modeSlice.onTime, modeSlice.total) : pct(lastPoint.onTime, lastPoint.total);
   const grid = document.getElementById('area-grid');
 
   grid.innerHTML = `
@@ -521,7 +526,13 @@ function setMode(mode) {
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
-  if (db) renderStats();
+  if (db && db.history.length) {
+    const last = db.history[db.history.length - 1];
+    buildAreaGrid(last);
+    updateMap(last, db.stops || {});
+    filterMapByArea(activeArea);
+    renderStats();
+  }
 }
 
 // ── MAIN RENDER ────────────────────────────────────────
