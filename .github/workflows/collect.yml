@@ -1,0 +1,24 @@
+name: Oslo Transit Collector
+
+on:
+  schedule:
+    # Every 15 minutes — free for public repos, no minute limits
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to push data/stats.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Collect transit data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node collect.js
