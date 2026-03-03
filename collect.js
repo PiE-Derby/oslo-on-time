@@ -116,6 +116,26 @@ async function putStats(db, sha) {
   return r.status === 200 || r.status === 201;
 }
 
+async function getSha(path) {
+  const r = await req({
+    hostname: 'api.github.com', path: `/repos/${REPO}/contents/${path}`,
+    method: 'GET',
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, 'User-Agent': 'pie-derby', Accept: 'application/vnd.github+json' }
+  });
+  return r.status === 200 ? r.body.sha : null;
+}
+
+async function putFile(path, data, message) {
+  const sha = await getSha(path);
+  const content = Buffer.from(JSON.stringify(data)).toString('base64');
+  const r = await req({
+    hostname: 'api.github.com', path: `/repos/${REPO}/contents/${path}`,
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, 'User-Agent': 'pie-derby', Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }
+  }, JSON.stringify({ message, content, ...(sha ? { sha } : {}) }));
+  return r.status === 200 || r.status === 201;
+}
+
 async function main() {
   const stopStats = {};
   let globalTotal=0, globalOnTime=0, globalDelayed=0, globalCancelled=0;
@@ -159,6 +179,20 @@ async function main() {
   db.updated = new Date().toISOString();
 
   const ok = await putStats(db, sha);
+
+  // Write latest.json — single snapshot used by frontend on initial load
+  const latest = { updated: db.updated, stops: STOPS, snapshot: point };
+  await putFile('data/latest.json', latest, `latest: ${new Date().toUTCString()}`);
+
+  // Write data/{today}.json — today's history for the frontend timeline chart
+  // Use Oslo timezone (UTC+1/+2) to match the frontend's dateStr() function
+  const osloDate = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
+  const todayStart = new Date(osloDate + 'T00:00:00+01:00').getTime() / 1000;
+  const todayPoints = db.history.filter(h => h.t >= todayStart);
+  await putFile(`data/${osloDate}.json`, todayPoints, `daily: ${osloDate}`);
+
   const pct = Math.round(globalOnTime / globalTotal * 100);
   console.log(`${ok?'✓':'✗'} ${new Date().toISOString()} — ${pct}% i rute (${globalOnTime}/${globalTotal}, ${globalDelayed} forsinket, ${globalCancelled} innstilt)`);
 }
